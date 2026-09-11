@@ -204,6 +204,7 @@ export const INPUTS = {
       notifyTurnCompleted: z.boolean().optional(),
       notifyApprovals: z.boolean().optional(),
       closeToTray: z.boolean().optional(),
+      theme: z.enum(["light", "dark"]).optional(),
     })
     .strict(),
 } satisfies Record<string, z.ZodType>;
@@ -251,6 +252,7 @@ export interface LocalPrefs {
   notifyTurnCompleted: boolean;
   notifyApprovals: boolean;
   closeToTray: boolean;
+  theme: "light" | "dark";
 }
 
 /** codex doctor / codex update 的结果。 */

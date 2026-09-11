@@ -22,6 +22,7 @@ const DEFAULTS: AppSettingsData = {
   notifyTurnCompleted: true,
   notifyApprovals: true,
   closeToTray: false,
+  theme: "light",
 };
 
 export class AppSettings {
@@ -45,6 +46,7 @@ export class AppSettings {
         notifyTurnCompleted: raw.notifyTurnCompleted === undefined ? true : Boolean(raw.notifyTurnCompleted),
         notifyApprovals: raw.notifyApprovals === undefined ? true : Boolean(raw.notifyApprovals),
         closeToTray: Boolean(raw.closeToTray),
+        theme: raw.theme === "dark" ? "dark" : "light",
       };
     } catch {
       try {

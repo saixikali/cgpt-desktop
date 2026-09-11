@@ -355,17 +355,23 @@ const HANDLERS: Record<string, AnyHandler> = {
     return ctx.cliTools.exportLogs(ctx.logsDir, summary, r.filePath);
   },
 
-  [C.settings.prefsGet]: (ctx): LocalPrefs => ({
-    notifyTurnCompleted: ctx.settings.get().notifyTurnCompleted,
-    notifyApprovals: ctx.settings.get().notifyApprovals,
-    closeToTray: ctx.settings.get().closeToTray,
-  }),
+  [C.settings.prefsGet]: (ctx): LocalPrefs => {
+    const s = ctx.settings.get();
+    return {
+      notifyTurnCompleted: s.notifyTurnCompleted,
+      notifyApprovals: s.notifyApprovals,
+      closeToTray: s.closeToTray,
+      theme: s.theme,
+    };
+  },
   [C.settings.prefsSet]: (ctx, i: Partial<LocalPrefs>): LocalPrefs => {
     ctx.settings.update(i);
+    const s = ctx.settings.get();
     return {
-      notifyTurnCompleted: ctx.settings.get().notifyTurnCompleted,
-      notifyApprovals: ctx.settings.get().notifyApprovals,
-      closeToTray: ctx.settings.get().closeToTray,
+      notifyTurnCompleted: s.notifyTurnCompleted,
+      notifyApprovals: s.notifyApprovals,
+      closeToTray: s.closeToTray,
+      theme: s.theme,
     };
   },
 };

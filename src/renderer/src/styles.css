@@ -1,32 +1,82 @@
 @import "tailwindcss";
 
 /*
- * Cgpt Desktop 设计 token（深色为主，视觉语言贴近 DSH Desktop：
- * 中性深色底、克制的强调色、无衬线字体）。
+ * Cgpt Desktop 设计 token（视觉语言贴近 DSH Desktop：
+ * 浅色为默认主题，html.dark 切换深色；两套均为中性底 + 克制的强调色）。
+ * 用 @theme inline 让工具类引用原始变量 --c-*，从而支持运行时换肤。
  */
-@theme {
-  --color-bg: #0b0d10;
-  --color-surface: #111418;
-  --color-surface-2: #171b20;
-  --color-surface-3: #1e232a;
-  --color-panel: #111418;
-  --color-hover: #1e232a;
-  --color-border: #252b33;
-  --color-text: #e6e9ed;
-  --color-text-muted: #9aa4b2;
-  --color-text-faint: #6b7480;
-  --color-accent: #4c8dff;
-  --color-accent-soft: #1c2b45;
-  --color-success: #3fb97a;
-  --color-warning: #d9a441;
-  --color-danger: #e05563;
+@theme inline {
+  --color-bg: var(--c-bg);
+  --color-surface: var(--c-surface);
+  --color-surface-2: var(--c-surface-2);
+  --color-surface-3: var(--c-surface-3);
+  --color-panel: var(--c-panel);
+  --color-hover: var(--c-hover);
+  --color-border: var(--c-border);
+  --color-text: var(--c-text);
+  --color-text-muted: var(--c-text-muted);
+  --color-text-faint: var(--c-text-faint);
+  --color-accent: var(--c-accent);
+  --color-accent-soft: var(--c-accent-soft);
+  --color-success: var(--c-success);
+  --color-warning: var(--c-warning);
+  --color-danger: var(--c-danger);
+  --color-on-accent: var(--c-on-accent);
+  --color-shadow: var(--c-shadow);
 
-  --font-sans:
+  --font-sans: var(--c-font-sans);
+  --font-mono: var(--c-font-mono);
+}
+
+:root {
+  --c-font-sans:
     "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
-  --font-mono:
+  --c-font-mono:
     "Cascadia Code", "JetBrains Mono", "SFMono-Regular", Consolas,
     "Liberation Mono", monospace;
+}
+
+/* 浅色（默认） */
+:root {
+  --c-bg: #ffffff;
+  --c-surface: #f7f8fa;
+  --c-surface-2: #ffffff;
+  --c-surface-3: #eef0f3;
+  --c-panel: #f7f8fa;
+  --c-hover: #ebedf0;
+  --c-border: #e3e6ea;
+  --c-text: #1b1e23;
+  --c-text-muted: #555d68;
+  --c-text-faint: #98a0ab;
+  --c-accent: #4080f4;
+  --c-accent-soft: #e4edfe;
+  --c-success: #1f9d63;
+  --c-warning: #b07918;
+  --c-danger: #d84453;
+  --c-on-accent: #ffffff;
+  --c-shadow: rgba(31, 35, 41, 0.10);
+}
+
+/* 深色 */
+html.dark {
+  --c-bg: #0b0d10;
+  --c-surface: #111418;
+  --c-surface-2: #171b20;
+  --c-surface-3: #1e232a;
+  --c-panel: #111418;
+  --c-hover: #1e232a;
+  --c-border: #252b33;
+  --c-text: #e6e9ed;
+  --c-text-muted: #9aa4b2;
+  --c-text-faint: #6b7480;
+  --c-accent: #4c8dff;
+  --c-accent-soft: #1c2b45;
+  --c-success: #3fb97a;
+  --c-warning: #d9a441;
+  --c-danger: #e05563;
+  --c-on-accent: #ffffff;
+  --c-shadow: rgba(0, 0, 0, 0.45);
 }
 
 html,
@@ -37,9 +87,9 @@ body,
 
 body {
   margin: 0;
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--font-sans);
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: var(--c-font-sans);
   font-size: 14px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
@@ -99,17 +149,17 @@ body {
 .markdown-body ol { list-style: decimal; }
 .markdown-body blockquote {
   margin: 0.6em 0;
-  border-left: 2px solid var(--color-border);
+  border-left: 2px solid var(--c-border);
   padding-left: 0.9em;
-  color: var(--color-text-muted);
+  color: var(--c-text-muted);
 }
 .markdown-body hr {
   margin: 1em 0;
   border: none;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--c-border);
 }
 .markdown-body code {
-  font-family: var(--font-mono);
+  font-family: var(--c-font-mono);
 }
 
 input,
@@ -117,17 +167,32 @@ textarea {
   user-select: text;
 }
 
+::selection {
+  background: var(--c-accent-soft);
+  color: var(--c-text);
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2c333c;
+  background: var(--c-border);
   border: 2px solid transparent;
   background-clip: content-box;
   border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a424d;
+  background: var(--c-text-faint);
   background-clip: content-box;
+}
+
+/* 欢迎页输入卡下方的径向光晕 */
+.welcome-glow {
+  pointer-events: none;
+  background: radial-gradient(
+    620px 260px at 50% 100%,
+    color-mix(in srgb, var(--c-accent) 13%, transparent),
+    transparent 72%
+  );
 }

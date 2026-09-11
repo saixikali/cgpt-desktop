@@ -8,16 +8,25 @@ import { SettingsPage } from "./pages/settings/settings-page.tsx";
 import { bindAppEvents } from "./store/app-events.ts";
 import { useBackendStore } from "./store/backend.ts";
 import { useRouterStore } from "./store/router.ts";
+import { useSettingsStore } from "./store/settings.ts";
+import { applyTheme } from "./lib/theme.ts";
 
 export function App() {
   const start = useBackendStore((s) => s.start);
   const wizard = useBackendStore((s) => s.wizard);
   const view = useRouterStore((s) => s.view);
+  const theme = useSettingsStore((s) => s.prefs?.theme);
 
   useEffect(() => {
     start();
+    void useSettingsStore.getState().loadPrefs().catch(() => undefined);
     return bindAppEvents();
   }, [start]);
+
+  // 以主进程持久化的 prefs 为权威主题来源（设置页切换即时生效）。
+  useEffect(() => {
+    if (theme) applyTheme(theme);
+  }, [theme]);
 
   // 向导未完成时锁定主界面（设置/聊天不可进入）。
   const locked = wizard !== null && !wizard.completed;
