@@ -36,7 +36,7 @@ export function Dialog({ open, onClose, title, children, footer, width = 480, cl
         aria-label={title}
         style={{ width }}
         className={cn(
-          "flex max-h-[85vh] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl shadow-black/50",
+          "flex max-h-[85vh] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl shadow-shadow",
           className,
         )}
       >

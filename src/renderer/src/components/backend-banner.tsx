@@ -32,8 +32,8 @@ export function BackendBanner() {
     <div
       className={`flex shrink-0 items-center gap-2.5 border-b px-4 py-2 text-xs ${
         recovery || fatal
-          ? "border-danger/30 bg-danger/10 text-red-200"
-          : "border-warning/25 bg-warning/10 text-amber-200"
+          ? "border-danger/30 bg-danger/10 text-danger"
+          : "border-warning/25 bg-warning/10 text-warning"
       }`}
     >
       {fatal ? (

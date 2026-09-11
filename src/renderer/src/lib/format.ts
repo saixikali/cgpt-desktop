@@ -17,6 +17,23 @@ export function formatTime(unixSeconds: number | null | undefined): string {
     : `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}`;
 }
 
+/** 侧栏会话相对时间：今天显示时分，昨天显示“昨天”，7 天内显示“n天”，更早回退日期。 */
+export function formatRelativeTime(unixSeconds: number | null | undefined): string {
+  if (!unixSeconds || unixSeconds <= 0) return "";
+  const d = new Date(unixSeconds * 1000);
+  const now = new Date();
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dayDiff = Math.round((startOfDay(now) - startOfDay(d)) / 86_400_000);
+  if (dayDiff <= 0) {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  if (dayDiff === 1) return "昨天";
+  if (dayDiff < 8) return `${dayDiff}天`;
+  if (d.getFullYear() === now.getFullYear()) return `${d.getMonth() + 1}月${d.getDate()}日`;
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function truncate(text: string, max: number): string {
   if (text.length <= max) return text;
   return text.slice(0, max - 1) + "…";

@@ -4,7 +4,7 @@ import { cn } from "../../lib/cn.ts";
 const fieldClass =
   "w-full rounded-lg border border-border bg-surface px-3 text-[13px] text-text " +
   "placeholder:text-text-faint select-text " +
-  "hover:border-[#313844] focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/20 " +
+  "hover:border-text-faint/60 focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/20 " +
   "disabled:opacity-50";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(

@@ -1,22 +1,29 @@
 import { useEffect } from "react";
-import { NavRail } from "./nav-rail.tsx";
-import { ThreadList } from "./thread-list.tsx";
+import { Sidebar } from "./sidebar.tsx";
 import { ThreadPane } from "./thread-pane.tsx";
 import { ApprovalsDock } from "../../components/approvals-dock.tsx";
-import { TerminalPane } from "../../components/terminal/terminal-pane.tsx";
+import { TerminalDrawer } from "../../components/terminal/terminal-drawer.tsx";
 import { useApprovalsStore } from "../../store/approvals.ts";
 import { useBackendStore } from "../../store/backend.ts";
 import { useProjectsStore } from "../../store/projects.ts";
+import { useTerminalStore } from "../../store/terminal.ts";
 import { bindCodexEvents } from "../../store/codex-events.ts";
+import { bindTerminalEvents } from "../../store/terminal.ts";
 
 export function ChatPage() {
   const startApprovals = useApprovalsStore((s) => s.start);
   const refreshProjects = useProjectsStore((s) => s.refresh);
   const backendReady = useBackendStore((s) => s.status?.state === "ready");
+  const terminalOpen = useTerminalStore((s) => s.open);
 
   useEffect(() => {
     startApprovals();
-    return bindCodexEvents();
+    const offCodex = bindCodexEvents();
+    const offTerminal = bindTerminalEvents();
+    return () => {
+      offCodex();
+      offTerminal();
+    };
   }, [startApprovals]);
 
   useEffect(() => {
@@ -24,16 +31,13 @@ export function ChatPage() {
   }, [backendReady, refreshProjects]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1">
-        <NavRail />
-        <ThreadList />
-        <main className="relative flex min-w-0 flex-1 flex-col">
-          <ThreadPane />
-          <ApprovalsDock />
-        </main>
-      </div>
-      <TerminalPane />
+    <div className="flex min-h-0 flex-1">
+      <Sidebar />
+      <main className="relative flex min-w-0 flex-1 flex-col">
+        <ThreadPane />
+        <ApprovalsDock />
+        {terminalOpen && <TerminalDrawer />}
+      </main>
     </div>
   );
 }

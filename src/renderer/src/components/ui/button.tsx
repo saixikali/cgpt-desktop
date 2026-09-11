@@ -14,13 +14,13 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const VARIANTS: Record<Variant, string> = {
   primary:
-    "bg-accent text-white hover:bg-[#5d99ff] active:bg-[#3f7dee] disabled:bg-accent/40",
+    "bg-accent text-on-accent transition-[filter] hover:brightness-110 active:brightness-95 disabled:bg-accent/40",
   secondary:
     "border border-border bg-surface-2 text-text hover:bg-surface-3 disabled:opacity-50",
   ghost: "text-text-muted hover:bg-hover hover:text-text disabled:opacity-40",
-  danger: "bg-danger text-white hover:bg-[#ec6673] disabled:opacity-50",
+  danger: "bg-danger text-on-accent transition-[filter] hover:brightness-110 disabled:opacity-50",
   dangerSoft:
-    "border border-danger/30 bg-danger/10 text-red-300 hover:bg-danger/20 disabled:opacity-50",
+    "border border-danger/30 bg-danger/10 text-danger hover:bg-danger/20 disabled:opacity-50",
 };
 
 const SIZES: Record<Size, string> = {

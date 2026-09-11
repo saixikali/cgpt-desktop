@@ -63,7 +63,7 @@ export const Markdown = memo(function Markdown({
             return (
               <code
                 className={cn(
-                  "rounded bg-surface-3 px-1.5 py-0.5 font-mono text-[12px] text-[#d6deea]",
+                  "rounded bg-surface-3 px-1.5 py-0.5 font-mono text-[12px] text-text",
                   cls,
                 )}
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any

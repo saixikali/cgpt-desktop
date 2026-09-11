@@ -5,15 +5,16 @@ import {
   Coins,
   FolderGit2,
   Loader2,
-  MessagesSquare,
   TriangleAlert,
 } from "lucide-react";
 import { t } from "../../i18n/zh.ts";
 import { useThreadViewStore } from "../../store/thread-view.ts";
 import { Badge } from "../../components/ui/badge.tsx";
 import { Button } from "../../components/ui/button.tsx";
-import { EmptyState, ErrorState } from "../../components/ui/empty-state.tsx";
+import { ErrorState } from "../../components/ui/empty-state.tsx";
 import { Skeleton } from "../../components/ui/skeleton.tsx";
+import { BrandMark } from "../../components/brand.tsx";
+import { PolicySelect, WorkspacePill } from "../../components/mode-select.tsx";
 import { Composer } from "./composer.tsx";
 import { TurnGroup } from "../../components/timeline.tsx";
 
@@ -92,14 +93,25 @@ export function ThreadPane() {
   if (!threadId) {
     return (
       <div className="relative flex h-full flex-1 flex-col">
-        <div className="flex min-h-0 flex-1 flex-col">
-          <EmptyState
-            icon={<MessagesSquare className="h-5 w-5" strokeWidth={1.6} />}
-            title={t.chat.emptyTitle}
-            hint={t.chat.emptyHint}
-          />
+        <div className="welcome-glow absolute inset-0" />
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-4 pb-2">
+          <div className="flex flex-col items-center gap-4">
+            <BrandMark size={56} radius={15} />
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-[26px] font-semibold tracking-tight text-text">
+                {t.welcome.slogan}
+              </h1>
+              <span className="rounded-full border border-accent/30 bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">
+                {t.app.badge}
+              </span>
+            </div>
+          </div>
+          <div className="flex w-full max-w-3xl items-center gap-2">
+            <WorkspacePill />
+            <PolicySelect />
+          </div>
+          <Composer />
         </div>
-        <Composer />
       </div>
     );
   }
@@ -157,7 +169,7 @@ export function ThreadPane() {
             {warnings.map((w) => (
               <div
                 key={w.key}
-                className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-200"
+                className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning"
               >
                 <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span className="select-text break-all">{w.message}</span>

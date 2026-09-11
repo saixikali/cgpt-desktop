@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import {
+  ArrowLeft,
   Cpu,
   FileCode2,
   Info,
@@ -94,6 +95,7 @@ export function SettingsPage() {
   const [active, setActive] = useState<SectionKey>("account");
   const routedSection = useRouterStore((s) => s.settingsSection);
   const openSettings = useRouterStore((s) => s.openSettings);
+  const setView = useRouterStore((s) => s.setView);
   const codex = useBackendStore((s) => s.status?.codex);
   const backendState = useBackendStore((s) => s.status?.state ?? "idle");
 
@@ -108,6 +110,14 @@ export function SettingsPage() {
   return (
     <div className="flex min-h-0 flex-1">
       <aside className="flex w-56 shrink-0 flex-col gap-0.5 border-r border-border bg-surface p-2">
+        <button
+          onClick={() => setView("chat")}
+          title={t.nav.chat}
+          className="mb-1 flex h-8 items-center gap-2 rounded-lg px-2 text-[13px] text-text-muted transition-colors hover:bg-hover hover:text-text"
+        >
+          <ArrowLeft className="h-4 w-4" strokeWidth={1.8} />
+          {t.nav.chat}
+        </button>
         {SECTIONS.map(({ key, icon: Icon, label }) => (
           <button
             key={key}

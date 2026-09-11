@@ -25,7 +25,7 @@ export function ToastViewport() {
         return (
           <div
             key={t.id}
-            className="pointer-events-auto flex items-start gap-2.5 rounded-lg border border-border bg-surface-2/95 px-3.5 py-3 shadow-xl shadow-black/40 backdrop-blur"
+            className="pointer-events-auto flex items-start gap-2.5 rounded-lg border border-border bg-surface-2/95 px-3.5 py-3 shadow-lg shadow-shadow backdrop-blur"
           >
             <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", TONE[t.kind])} strokeWidth={1.8} />
             <div className="min-w-0 flex-1">

@@ -366,7 +366,7 @@ function McpToolCall({ item }: { item: AnyItem }) {
           </Collapsible>
         )}
         {errorText && (
-          <p className="select-text rounded-md bg-danger/10 px-2.5 py-1.5 font-mono text-[11px] text-red-300">
+          <p className="select-text rounded-md bg-danger/10 px-2.5 py-1.5 font-mono text-[11px] text-danger">
             {errorText}
           </p>
         )}
@@ -470,7 +470,7 @@ export function TurnGroup({ turn }: { turn: import("../store/thread-view.ts").Tu
         <ThreadItemView key={i} item={item} />
       ))}
       {(failed || error?.message != null) && (
-        <div className="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-red-300">
+        <div className="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-danger">
           <CircleX className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span className="select-text break-all">
             {str(error?.message) || "该回合执行失败"}
@@ -483,8 +483,8 @@ export function TurnGroup({ turn }: { turn: import("../store/thread-view.ts").Tu
           className={cn(
             "flex items-start gap-2 rounded-lg px-3 py-2 text-[12px]",
             n.level === "error"
-              ? "border border-danger/30 bg-danger/10 text-red-300"
-              : "border border-amber-500/30 bg-amber-500/10 text-amber-200",
+              ? "border border-danger/30 bg-danger/10 text-danger"
+              : "border border-warning/30 bg-warning/10 text-warning",
           )}
         >
           {n.level === "error" ? (

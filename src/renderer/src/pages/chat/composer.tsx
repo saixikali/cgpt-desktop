@@ -1,13 +1,14 @@
 /**
- * 聊天输入区：
+ * 聊天输入区（DSH Desktop 风格大圆角卡片）：
  *  - Enter 发送 / Shift+Enter 换行（IME 组合中不触发）
  *  - 无会话时以当前工作区根目录自动建会话
- *  - turn/start 支持当轮 model / effort 覆盖（AC-8）
+ *  - turn/start 支持当轮 model / effort 覆盖（AC-8），选择器并入底部工具条右侧
  *  - 流式进行中可"追加"输入（turn/steer，AC-5）或"停止"（turn/interrupt）
  *  - 支持附加本地图片（localImage）
+ *  - 底部工具条左侧为全局沙箱模式选择（写 config.toml，对新会话生效）
  */
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, ImagePlus, Send, Square } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, ImagePlus, Plus, Send, Square, X } from "lucide-react";
 import { t } from "../../i18n/zh.ts";
 import { bridge, call } from "../../lib/ipc.ts";
 import { useApprovalsStore } from "../../store/approvals.ts";
@@ -17,6 +18,8 @@ import { useThreadViewStore } from "../../store/thread-view.ts";
 import { useThreadsStore } from "../../store/threads.ts";
 import { useToastStore } from "../../store/toast.ts";
 import { useTurnOverridesStore } from "../../store/turn-overrides.ts";
+import { SandboxSelect } from "../../components/mode-select.tsx";
+import { cn } from "../../lib/cn.ts";
 
 interface AttachedImage {
   path: string;
@@ -30,6 +33,7 @@ interface ModelRow {
   displayName: string;
   hidden: boolean;
   isDefault: boolean;
+  defaultReasoningEffort?: string;
   supportedReasoningEfforts?: Array<{ reasoningEffort: string }>;
 }
 
@@ -45,9 +49,10 @@ function AttachedChip({ img, onRemove }: { img: AttachedImage; onRemove: () => v
       )}
       <button
         onClick={onRemove}
-        className="absolute inset-x-0 bottom-0 hidden bg-black/60 py-0.5 text-center text-[9px] text-white group-hover:block"
+        className="absolute inset-0 hidden items-center justify-center bg-black/50 text-white group-hover:flex"
+        title="移除"
       >
-        移除
+        <X className="h-4 w-4" />
       </button>
     </div>
   );
@@ -66,6 +71,120 @@ async function readPreview(path: string): Promise<string | null> {
 }
 
 const FALLBACK_EFFORTS = ["minimal", "low", "medium", "high"];
+
+/** 模型 + 推理力度组合选择（当轮覆盖，仅作用于本会话）。 */
+function ModelEffortSelect({
+  threadId,
+  modelRows,
+  overrides,
+  setModelOverride,
+  setEffortOverride,
+}: {
+  threadId: string | null;
+  modelRows: ModelRow[];
+  overrides: { model: string | null; effort: string | null };
+  setModelOverride: (threadId: string | null, v: string | null) => void;
+  setEffortOverride: (threadId: string | null, v: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const selectedRow =
+    modelRows.find((m) => m.model === overrides.model) ??
+    modelRows.find((m) => m.isDefault) ??
+    modelRows[0] ??
+    null;
+  const effortOptions =
+    selectedRow?.supportedReasoningEfforts && selectedRow.supportedReasoningEfforts.length > 0
+      ? selectedRow.supportedReasoningEfforts.map((e) => e.reasoningEffort)
+      : FALLBACK_EFFORTS;
+  const effort =
+    overrides.effort ?? selectedRow?.defaultReasoningEffort ?? t.modes.effortFollow;
+  const label = selectedRow ? `${selectedRow.displayName} ${effort}` : t.common.loading;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        title="仅作用于本会话的回合覆盖，不影响设置页全局默认"
+        disabled={modelRows.length === 0}
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "flex h-8 max-w-[240px] items-center gap-1 rounded-lg px-2 text-xs font-medium text-text-muted transition-colors hover:bg-hover hover:text-text disabled:opacity-50",
+          open && "bg-hover text-text",
+        )}
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown className={cn("h-3 w-3 shrink-0 opacity-70 transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="absolute bottom-full right-0 z-40 mb-1.5 w-60 overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-lg shadow-shadow">
+          <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-medium tracking-wide text-text-faint">
+            模型（当轮）
+          </p>
+          <div className="max-h-52 overflow-y-auto">
+            {modelRows.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => {
+                  setModelOverride(threadId, m.isDefault ? null : m.model);
+                  setEffortOverride(threadId, null);
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs",
+                  selectedRow?.id === m.id ? "bg-accent-soft text-accent" : "text-text-muted hover:bg-hover hover:text-text",
+                )}
+              >
+                <span className="min-w-0 flex-1 truncate">{m.displayName}</span>
+                {selectedRow?.id === m.id && <Check className="h-3.5 w-3.5 shrink-0" />}
+              </button>
+            ))}
+          </div>
+          <div className="my-1 border-t border-border" />
+          <p className="px-2.5 pb-1 pt-0.5 text-[10px] font-medium tracking-wide text-text-faint">
+            推理力度
+          </p>
+          <div className="flex flex-col">
+            <button
+              onClick={() => setEffortOverride(threadId, null)}
+              className={cn(
+                "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs",
+                !overrides.effort ? "bg-accent-soft text-accent" : "text-text-muted hover:bg-hover hover:text-text",
+              )}
+            >
+              <span className="flex-1">{t.modes.effortFollow}</span>
+              {!overrides.effort && <Check className="h-3.5 w-3.5" />}
+            </button>
+            {effortOptions.map((eff) => {
+              const active = eff === effort;
+              return (
+                <button
+                  key={eff}
+                  onClick={() => setEffortOverride(threadId, eff)}
+                  className={cn(
+                    "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs capitalize",
+                    active ? "bg-accent-soft text-accent" : "text-text-muted hover:bg-hover hover:text-text",
+                  )}
+                >
+                  <span className="flex-1">{eff}</span>
+                  {active && <Check className="h-3.5 w-3.5" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Composer() {
   const threadId = useThreadViewStore((s) => s.threadId);
@@ -94,11 +213,6 @@ export function Composer() {
     const rows = Array.isArray(d) ? d : Array.isArray(d?.data) ? d!.data : [];
     return rows.filter((m) => !m.hidden);
   })();
-  const selectedModelRow = modelRows.find((m) => m.model === overrides.model);
-  const effortOptions = (selectedModelRow?.supportedReasoningEfforts?.length
-    ? selectedModelRow!.supportedReasoningEfforts.map((e) => e.reasoningEffort)
-    : FALLBACK_EFFORTS
-  );
 
   const [text, setText] = useState("");
   const [images, setImages] = useState<AttachedImage[]>([]);
@@ -254,103 +368,87 @@ export function Composer() {
     void (streaming ? steer() : send());
   };
 
-  const selectCls =
-    "max-w-40 truncate rounded-md border border-border bg-surface-2 px-1.5 py-1 text-[11px] text-text-faint focus:outline-none disabled:opacity-50";
+  const canSend = text.trim().length > 0 || images.length > 0;
 
   return (
-    <footer className="shrink-0 border-t border-border bg-surface p-3">
-      <div className="mx-auto flex max-w-3xl flex-col gap-2">
-        {images.length > 0 && (
-          <div className="flex gap-2">
-            {images.map((img) => (
-              <AttachedChip
-                key={img.path}
-                img={img}
-                onRemove={() => setImages((prev) => prev.filter((x) => x.path !== img.path))}
-              />
-            ))}
-          </div>
-        )}
-        <div className="flex items-center gap-1.5" title="仅作用于本会话的回合覆盖，不影响设置页全局默认">
-          <span className="text-[11px] text-text-faint">当轮</span>
-          <select
-            className={selectCls}
-            value={overrides.model ?? ""}
-            disabled={modelRows.length === 0}
-            onChange={(e) => {
-              setModelOverride(threadId, e.target.value || null);
-              // 切换模型后旧 effort 可能不在新模型支持列表内，重置为跟随默认。
-              setEffortOverride(threadId, null);
-            }}
-          >
-            <option value="">模型：跟随默认</option>
-            {modelRows.map((m) => (
-              <option key={m.id} value={m.model}>
-                {m.displayName}
-                {m.isDefault ? "（默认）" : ""}
-              </option>
-            ))}
-          </select>
-          <select
-            className={selectCls}
-            value={overrides.effort ?? ""}
-            onChange={(e) => setEffortOverride(threadId, e.target.value || null)}
-          >
-            <option value="">推理力度：跟随默认</option>
-            {effortOptions.map((eff) => (
-              <option key={eff} value={eff}>
-                {eff}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-end gap-2 rounded-xl border border-border bg-surface-2 p-2 focus-within:border-accent/50">
-          <button
-            title="附加图片"
-            onClick={() => void attachImages()}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-hover hover:text-text"
-          >
-            <ImagePlus className="h-4 w-4" strokeWidth={1.7} />
-          </button>
+    <footer className="w-full shrink-0 px-4 pb-4">
+      <div className="mx-auto flex max-w-3xl flex-col">
+        <div
+          className={cn(
+            "rounded-2xl border border-border bg-surface-2 shadow-[0_2px_10px_var(--c-shadow)] transition-shadow",
+            "focus-within:border-accent/40 focus-within:shadow-[0_6px_24px_var(--c-shadow)]",
+          )}
+        >
+          {images.length > 0 && (
+            <div className="flex gap-2 px-3 pt-3">
+              {images.map((img) => (
+                <AttachedChip
+                  key={img.path}
+                  img={img}
+                  onRemove={() => setImages((prev) => prev.filter((x) => x.path !== img.path))}
+                />
+              ))}
+            </div>
+          )}
           <textarea
             ref={taRef}
-            rows={1}
+            rows={2}
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={onKeyDown}
             onCompositionStart={() => (composing.current = true)}
             onCompositionEnd={() => (composing.current = false)}
             placeholder={streaming ? "向进行中的回合追加指令（Enter 发送）" : t.chat.inputPlaceholder}
-            className="max-h-40 min-h-8 flex-1 resize-none bg-transparent py-1.5 text-[13px] leading-relaxed text-text placeholder:text-text-faint focus:outline-none"
+            className="max-h-48 min-h-[52px] w-full resize-none bg-transparent px-4 py-3 text-[13px] leading-relaxed text-text placeholder:text-text-faint focus:outline-none"
           />
-          {streaming ? (
-            <>
-              <button
-                title="追加到当前回合"
-                onClick={() => void steer()}
-                disabled={busy || !text.trim()}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-white transition-opacity hover:bg-[#5d99ff] disabled:opacity-40"
-              >
-                <Send className="h-3.5 w-3.5" strokeWidth={2} />
-              </button>
-              <button
-                title={t.chat.stop}
-                onClick={() => void interrupt()}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-danger/15 text-red-300 hover:bg-danger/25"
-              >
-                <Square className="h-3.5 w-3.5 fill-current" />
-              </button>
-            </>
-          ) : (
+          <div className="flex items-center gap-1 px-2 pb-2">
             <button
-              title={t.chat.send}
-              onClick={() => void send()}
-              disabled={busy || (!text.trim() && images.length === 0)}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-white transition-opacity hover:bg-[#5d99ff] disabled:opacity-40"
+              title="附加图片"
+              onClick={() => void attachImages()}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-muted hover:bg-hover hover:text-text"
             >
-              <ArrowUp className="h-4 w-4" strokeWidth={2} />
+              {images.length > 0 ? <ImagePlus className="h-4 w-4" strokeWidth={1.8} /> : <Plus className="h-[18px] w-[18px]" strokeWidth={1.8} />}
             </button>
-          )}
+            <SandboxSelect compact />
+
+            <div className="flex-1" />
+
+            <ModelEffortSelect
+              threadId={threadId}
+              modelRows={modelRows}
+              overrides={overrides}
+              setModelOverride={setModelOverride}
+              setEffortOverride={setEffortOverride}
+            />
+            {streaming ? (
+              <>
+                <button
+                  title="追加到当前回合"
+                  onClick={() => void steer()}
+                  disabled={busy || !text.trim()}
+                  className="ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent transition-[filter,opacity] hover:brightness-110 disabled:opacity-40"
+                >
+                  <Send className="h-4 w-4" strokeWidth={2} />
+                </button>
+                <button
+                  title={t.chat.stop}
+                  onClick={() => void interrupt()}
+                  className="ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger/15 text-danger transition-colors hover:bg-danger/25"
+                >
+                  <Square className="h-4 w-4 fill-current" />
+                </button>
+              </>
+            ) : (
+              <button
+                title={t.chat.send}
+                onClick={() => void send()}
+                disabled={busy || !canSend}
+                className="ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent transition-[filter,opacity] hover:brightness-110 disabled:opacity-40"
+              >
+                <ArrowUp className="h-[18px] w-[18px]" strokeWidth={2.2} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </footer>

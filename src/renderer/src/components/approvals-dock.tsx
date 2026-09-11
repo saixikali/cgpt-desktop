@@ -9,6 +9,8 @@ import { t } from "../i18n/zh.ts";
 import { bridge, call } from "../lib/ipc.ts";
 import { useApprovalsStore, type PendingApproval } from "../store/approvals.ts";
 import { useToastStore } from "../store/toast.ts";
+import { useTerminalStore } from "../store/terminal.ts";
+import { cn } from "../lib/cn.ts";
 import { Button } from "./ui/button.tsx";
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -40,9 +42,9 @@ function CommandCard({ a }: { a: PendingApproval }) {
   };
 
   return (
-    <div className="rounded-xl border border-amber-500/40 bg-surface shadow-xl shadow-black/40">
+    <div className="rounded-xl border border-warning/40 bg-surface shadow-lg shadow-shadow">
       <header className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <Terminal className="h-3.5 w-3.5 text-amber-400" strokeWidth={1.7} />
+        <Terminal className="h-3.5 w-3.5 text-warning" strokeWidth={1.7} />
         <span className="text-xs font-semibold">命令执行请求</span>
         {str(p.reason) && (
           <span className="ml-auto max-w-[220px] truncate text-[10px] text-text-faint">
@@ -92,9 +94,9 @@ function FileChangeCard({ a }: { a: PendingApproval }) {
   };
 
   return (
-    <div className="rounded-xl border border-amber-500/40 bg-surface shadow-xl shadow-black/40">
+    <div className="rounded-xl border border-warning/40 bg-surface shadow-lg shadow-shadow">
       <header className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <FileDiff className="h-3.5 w-3.5 text-amber-400" strokeWidth={1.7} />
+        <FileDiff className="h-3.5 w-3.5 text-warning" strokeWidth={1.7} />
         <span className="text-xs font-semibold">文件变更请求</span>
       </header>
       <div className="px-3 py-2 text-[11px] text-text-muted">
@@ -139,9 +141,9 @@ function ElicitationCard({ a }: { a: PendingApproval }) {
 
   const url = str(p.url);
   return (
-    <div className="rounded-xl border border-amber-500/40 bg-surface shadow-xl shadow-black/40">
+    <div className="rounded-xl border border-warning/40 bg-surface shadow-lg shadow-shadow">
       <header className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <Gavel className="h-3.5 w-3.5 text-amber-400" strokeWidth={1.7} />
+        <Gavel className="h-3.5 w-3.5 text-warning" strokeWidth={1.7} />
         <span className="text-xs font-semibold">MCP 服务器请求</span>
         <span className="ml-auto truncate font-mono text-[10px] text-text-faint">{str(p.serverName)}</span>
       </header>
@@ -207,7 +209,7 @@ function UserInputCard({ a }: { a: PendingApproval }) {
   };
 
   return (
-    <div className="rounded-xl border border-accent/40 bg-surface shadow-xl shadow-black/40">
+    <div className="rounded-xl border border-accent/40 bg-surface shadow-lg shadow-shadow">
       <header className="flex items-center gap-2 border-b border-border px-3 py-2">
         <ShieldQuestion className="h-3.5 w-3.5 text-accent" strokeWidth={1.7} />
         <span className="text-xs font-semibold">Codex 需要你的回答</span>
@@ -267,11 +269,17 @@ function UserInputCard({ a }: { a: PendingApproval }) {
 
 export function ApprovalsDock() {
   const pending = useApprovalsStore((s) => s.pending);
+  const terminalOpen = useTerminalStore((s) => s.open);
 
   if (pending.length === 0) return null;
 
   return (
-    <div className="pointer-events-none absolute bottom-3 right-4 z-30 flex max-h-[70%] w-[340px] flex-col gap-2 overflow-y-auto">
+    <div
+      className={cn(
+        "pointer-events-none absolute right-4 z-30 flex max-h-[70%] w-[340px] flex-col gap-2 overflow-y-auto transition-[bottom] duration-200",
+        terminalOpen ? "bottom-[300px]" : "bottom-3",
+      )}
+    >
       {pending.map((a) => (
         <div key={a.localId} className="pointer-events-auto">
           {a.method === "item/commandExecution/requestApproval" || a.method === "execCommandApproval" ? (
@@ -283,7 +291,7 @@ export function ApprovalsDock() {
           ) : a.method === "item/tool/requestUserInput" ? (
             <UserInputCard a={a} />
           ) : (
-            <div className="rounded-xl border border-amber-500/40 bg-surface px-3 py-2 text-[11px] text-text-muted shadow-xl shadow-black/40">
+            <div className="rounded-xl border border-warning/40 bg-surface px-3 py-2 text-[11px] text-text-muted shadow-lg shadow-shadow">
               未支持的请求类型：{a.method}
             </div>
           )}

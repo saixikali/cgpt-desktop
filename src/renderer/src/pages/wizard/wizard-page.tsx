@@ -166,7 +166,7 @@ export function WizardPage() {
 
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center p-8">
-      <div className="flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl shadow-black/30">
+      <div className="flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl shadow-shadow">
         <header className="flex items-center gap-3 border-b border-border bg-surface-2 px-6 py-5">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-soft">
             <TerminalSquare className="h-5 w-5 text-accent" strokeWidth={1.7} />
@@ -214,12 +214,12 @@ export function WizardPage() {
                     </dl>
                   )}
                   {status?.fatalMessage && (
-                    <p className="mt-3 select-text text-[11px] leading-relaxed text-red-300">
+                    <p className="mt-3 select-text text-[11px] leading-relaxed text-danger">
                       {status.fatalMessage}
                     </p>
                   )}
                   <p
-                    className={`mt-3 text-[11px] ${ready ? "text-emerald-300/90" : "text-text-faint"}`}
+                    className={`mt-3 text-[11px] ${ready ? "text-success" : "text-text-faint"}`}
                   >
                     {ready ? t.wizard.cliReadyHint : t.wizard.cliNotReadyHint}
                   </p>
@@ -259,7 +259,7 @@ export function WizardPage() {
                     <p className="text-xs text-text-faint">{t.common.loading}</p>
                   )}
                   {authState === "error" && (
-                    <p className="text-xs text-red-300">{t.wizard.authReadFail}</p>
+                    <p className="text-xs text-danger">{t.wizard.authReadFail}</p>
                   )}
                   {authState === "ok" && (
                     <>
@@ -273,7 +273,7 @@ export function WizardPage() {
                         </dd>
                       </dl>
                       {!auth?.authMethod && (
-                        <p className="mt-3 text-[11px] leading-relaxed text-amber-300/90">
+                        <p className="mt-3 text-[11px] leading-relaxed text-warning">
                           {t.wizard.authNotLoggedInHint}
                         </p>
                       )}
@@ -348,13 +348,13 @@ export function WizardPage() {
                   {result && (
                     <div className="mt-3 flex flex-col gap-1.5">
                       {!result.degraded && result.project?.name && (
-                        <p className="flex items-center gap-1.5 text-[11px] text-emerald-300/90">
+                        <p className="flex items-center gap-1.5 text-[11px] text-success">
                           <CircleCheck className="h-3.5 w-3.5" />
                           {result.project.name}
                         </p>
                       )}
                       {result.degraded && (
-                        <p className="flex items-center gap-1.5 text-[11px] text-amber-300/90">
+                        <p className="flex items-center gap-1.5 text-[11px] text-warning">
                           <CircleAlert className="h-3.5 w-3.5" />
                           {t.wizard.doneDegraded}
                         </p>
@@ -362,7 +362,7 @@ export function WizardPage() {
                     </div>
                   )}
                   {finishError && (
-                    <p className="mt-3 select-text text-[11px] leading-relaxed text-red-300">
+                    <p className="mt-3 select-text text-[11px] leading-relaxed text-danger">
                       {t.wizard.completeFailed}：{finishError}
                     </p>
                   )}
