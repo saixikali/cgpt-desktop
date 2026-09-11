@@ -60,16 +60,57 @@ npm run gen:protocol
 
 ```
 src/
-  main/            主进程：Codex app-server 传输/RPC、审批、IPC 注册、PTY、托盘、窗口
-    codex/         RPC 客户端、传输层、审批与通知、CLI 定位/更新/诊断
-    ipc/           IPC handler 注册与路径守卫
-    pty/           集成终端（ConPTY）
-  preload/         contextBridge 安全桥接
-  renderer/        React 渲染端（页面、组件、zustand stores、i18n）
-  shared/ipc/      跨进程 IPC 通道名与 zod 契约
-protocol/generated/ 由 codex PROTOCOL.json 生成的 TypeScript 类型
-scripts/           协议生成、图标生成与开发期诊断脚本
-build/、resources/  安装与运行时图标资源
+├─ main/                       主进程
+│  ├─ codex/                   Codex 适配层
+│  │  ├─ rpc-client.ts         JSON-RPC 客户端（请求/通知/断连重连）
+│  │  ├─ app-server-transport.ts  app-server 子进程与 stdio 传输（含背压处理）
+│  │  ├─ codex-api.ts          RPC 方法封装（线程、回合、审批、登录等）
+│  │  ├─ codex-resolver.ts     本机 codex 可执行文件发现
+│  │  ├─ approvals.ts          审批登记/决议/TTL 与系统通知联动
+│  │  ├─ notifications.ts      Codex 服务端通知订阅
+│  │  └─ cli-tools.ts          CLI 更新、取消更新与 doctor 诊断
+│  ├─ ipc/
+│  │  ├─ register-ipc.ts       全部 IPC handler 注册
+│  │  └─ path-guard.ts         路径守卫（realpath，防 symlink/junction 穿越）
+│  ├─ pty/terminal-service.ts  集成终端（node-pty / ConPTY）
+│  ├─ backend-service.ts       Codex 后端生命周期管理
+│  ├─ window.ts / tray.ts      窗口与托盘
+│  ├─ app-settings.ts          用户设置读写（%APPDATA%\Cgpt Desktop）
+│  ├─ notifications.ts         Windows 系统通知
+│  ├─ window-state.ts / logging.ts / index.ts
+├─ preload/index.ts            contextBridge 安全桥接（window.cgpt）
+├─ renderer/src/               React 渲染端
+│  ├─ pages/
+│  │  ├─ chat/                 会话页（列表、会话窗、输入框、导航栏）
+│  │  ├─ settings/sections/    设置页（账号、Codex、模型、MCP、配置、诊断等）
+│  │  └─ wizard/               首次使用向导
+│  ├─ components/
+│  │  ├─ approvals-dock.tsx    底部审批坞（并发审批卡片）
+│  │  ├─ timeline.tsx          会话时间线（消息/命令/工具调用）
+│  │  ├─ markdown.tsx          Markdown 渲染（节流、代码高亮、链接白名单）
+│  │  ├─ terminal/             集成终端组件（xterm.js）
+│  │  ├─ ui/                   基础 UI 组件（Button/Dialog/Input 等）
+│  │  └─ titlebar / toast-viewport / backend-banner
+│  ├─ store/                   zustand 状态（threads、thread-view、approvals、
+│  │                           terminal、settings、toast、turn-overrides 等）
+│  ├─ i18n/zh.ts               中文文案
+│  ├─ lib/                     IPC 调用封装与工具函数
+│  └─ App.tsx / main.tsx / styles.css
+├─ shared/ipc/
+│  ├─ channels.ts              IPC 通道名常量
+│  └─ contract.ts              跨进程 zod 契约（主/渲染/预加载共享类型）
+└─ shared/globals.d.ts
+
+protocol/generated/            由 codex PROTOCOL.json 生成的 TS 类型（含生成脚本）
+scripts/                       协议/图标生成脚本与开发期诊断脚本（lib/ 为辅助库）
+build/icon.ico                 NSIS 与窗口图标
+resources/                     运行时托盘/通知图标（*.png，electron-builder extraResources）
+
+electron.vite.config.ts        electron-vite 构建配置
+electron-builder.yml           NSIS x64 打包配置（asarUnpack node-pty、深链协议）
+tsconfig.json / tsconfig.node.json / tsconfig.web.json  双工程 TS strict 配置
+.npmrc                         electron 与 electron-builder 国内镜像
+package.json
 ```
 
 ## 许可证
