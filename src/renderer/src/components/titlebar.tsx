@@ -1,31 +1,45 @@
-import { Minus, Square, X, TerminalSquare } from "lucide-react";
+import { Minus, Square, X } from "lucide-react";
 import { bridge } from "../lib/ipc.ts";
 import { t } from "../i18n/zh.ts";
 import { useBackendStore } from "../store/backend.ts";
 import { cn } from "../lib/cn.ts";
 
 const STATE_DOT: Record<string, string> = {
-  idle: "bg-zinc-500",
-  resolving: "bg-amber-400 animate-pulse",
-  connecting: "bg-amber-400 animate-pulse",
-  ready: "bg-emerald-400",
-  reconnecting: "bg-amber-400 animate-pulse",
-  closed: "bg-zinc-500",
-  fatal: "bg-red-500",
+  idle: "bg-text-faint",
+  resolving: "bg-warning animate-pulse",
+  connecting: "bg-warning animate-pulse",
+  ready: "bg-success",
+  reconnecting: "bg-warning animate-pulse",
+  closed: "bg-text-faint",
+  fatal: "bg-danger",
 };
 
 export function TitleBar() {
   const status = useBackendStore((s) => s.status);
   const state = status?.state ?? "idle";
+  const stateLabel = t.status[state as keyof typeof t.status] ?? state;
 
   return (
-    <header className="titlebar flex h-9 shrink-0 items-center gap-2 border-b border-border bg-panel px-3">
-      <TerminalSquare className="h-4 w-4 text-accent" strokeWidth={1.8} />
-      <span className="text-xs font-medium">{t.app.name}</span>
-      <span className="ml-1.5 flex items-center gap-1.5 text-[11px] text-text-muted">
-        <span className={cn("h-1.5 w-1.5 rounded-full", STATE_DOT[state])} />
-        {t.status[state as keyof typeof t.status] ?? state}
-      </span>
+    <header className="titlebar relative flex h-9 shrink-0 items-center border-b border-border bg-panel px-3">
+      {/* 左：后端状态小点 */}
+      <div
+        className="flex items-center gap-1.5"
+        title={`${t.app.name} · ${stateLabel}`}
+      >
+        <span className={cn("h-2 w-2 rounded-full", STATE_DOT[state])} />
+      </div>
+
+      {/* 中：应用名 + 版本 + 徽标 */}
+      <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center gap-2">
+        <span className="text-xs font-semibold text-text">{t.app.name}</span>
+        <span className="text-[11px] tabular-nums text-text-faint">
+          v{window.cgpt.versions.app}
+        </span>
+        <span className="rounded-full border border-accent/30 bg-accent-soft px-1.5 py-px text-[10px] font-medium text-accent">
+          {t.app.badge}
+        </span>
+      </div>
+
       <div className="flex-1" />
       <div className="titlebar-actions flex items-center">
         <button
@@ -43,7 +57,7 @@ export function TitleBar() {
           <Square className="h-3 w-3" />
         </button>
         <button
-          className="flex h-7 w-9 items-center justify-center text-text-muted hover:bg-red-500/90 hover:text-white"
+          className="flex h-7 w-9 items-center justify-center text-text-muted hover:bg-danger hover:text-on-accent"
           onClick={() => void bridge().app.windowControl({ action: "close" })}
           aria-label="关闭"
         >
