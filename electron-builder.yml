@@ -1,0 +1,53 @@
+# electron-builder 配置：Cgpt Desktop（NSIS x64，不内置 codex，运行时使用本机 CLI）
+appId: com.cgpt.desktop
+productName: Cgpt Desktop
+copyright: Copyright © 2026 Cgpt Desktop
+
+directories:
+  output: dist
+  buildResources: build
+
+# 仅打包 electron-vite 产物与 package.json；生产依赖由 builder 自动收集
+files:
+  - out/**/*
+  - package.json
+
+# node-pty 原生模块（.node/.dll/OpenConsole.exe）必须在 asar 外按原目录结构加载
+asar: true
+asarUnpack:
+  - "**/node_modules/node-pty/**"
+
+# 托盘/通知/窗口图标：与 main 进程 resourcePath() 对应（process.resourcesPath 根）
+extraResources:
+  - from: resources
+    to: .
+    filter:
+      - "*.png"
+
+# 使用 node-pty 自带 prebuilds，无需安装期 node-gyp 重编译
+npmRebuild: false
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Cgpt Desktop
+  deleteAppDataOnUninstall: false
+  artifactName: Cgpt-Desktop-${version}-x64-setup.exe
+
+protocols:
+  - name: Cgpt Desktop
+    schemes:
+      - cgpt-desktop
+
+publish: null

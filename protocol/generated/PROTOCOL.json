@@ -1,0 +1,8 @@
+{
+  "generatedAt": "2026-09-09T21:18:23.344Z",
+  "codexVersion": "0.151.0-alpha.7.2",
+  "codexPath": "C:\\Users\\Administrator\\.codex\\.sandbox-bin\\codex.exe",
+  "source": "sandbox-bin",
+  "generator": "codex app-server generate-ts --experimental",
+  "appVersion": "0.1.0"
+}

@@ -1,0 +1,13 @@
+node_modules/
+out/
+dist/
+*.log
+.DS_Store
+.env
+.env.*
+
+# Trae 规格/评审记录与回归证据
+.trae/
+
+# TypeScript incremental build info
+*.tsbuildinfo
