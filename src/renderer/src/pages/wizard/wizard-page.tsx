@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { t } from "../../i18n/zh.ts";
 import { useBackendStore } from "../../store/backend.ts";
+import { useRouterStore } from "../../store/router.ts";
 import { useToastStore } from "../../store/toast.ts";
 import { bridge, call } from "../../lib/ipc.ts";
 import { Badge } from "../../components/ui/badge.tsx";
@@ -157,6 +158,13 @@ export function WizardPage() {
     } finally {
       setCompleting(false);
     }
+  };
+
+  // 进入主界面：无论首次锁定流程还是从侧栏再次进入向导，都显式切回聊天视图，
+  // 并刷新向导完成标记（首次流程依赖它解除锁定）。
+  const enterApp = () => {
+    useRouterStore.getState().setView("chat");
+    void refreshWizard();
   };
 
   const canNext =
@@ -412,7 +420,7 @@ export function WizardPage() {
             </Button>
           )}
           {step === 3 && result && (
-            <Button size="sm" variant="primary" onClick={() => void refreshWizard()}>
+            <Button size="sm" variant="primary" onClick={enterApp}>
               {t.wizard.enter}
             </Button>
           )}
