@@ -58,8 +58,13 @@ interface ThreadViewStore {
   tokenUsage: TokenUsageView | null;
   /** 线程级 warning 行内条。 */
   warnings: ThreadWarning[];
-  open: (threadId: string) => Promise<void>;
+  /** 侧栏前进/后退：最近打开的会话历史栈。 */
+  history: string[];
+  historyIndex: number;
+  open: (threadId: string, opts?: { fromHistory?: boolean }) => Promise<void>;
   close: () => void;
+  goBack: () => void;
+  goForward: () => void;
   loadOlder: () => Promise<void>;
   setStreaming: (v: boolean) => void;
   /** codex 通知 → 流式状态归并的唯一入口（codex-events 分发）。 */
@@ -191,8 +196,19 @@ export const useThreadViewStore = create<ThreadViewStore>((set, get) => {
     activeTurnId: null,
     tokenUsage: null,
     warnings: [],
+    history: [],
+    historyIndex: -1,
 
-    open: async (threadId) => {
+    open: async (threadId, opts) => {
+      // 历史栈仅在主动打开会话时推进；前进/后退只移动游标不重复入栈。
+      if (!opts?.fromHistory) {
+        const { history, historyIndex } = get();
+        if (history[historyIndex] !== threadId) {
+          // 新开分支时丢弃当前位置之后的前进项；上限 50 条，避免无界增长。
+          const nextHistory = [...history.slice(0, historyIndex + 1), threadId].slice(-50);
+          set({ history: nextHistory, historyIndex: nextHistory.length - 1 });
+        }
+      }
       set({
         threadId,
         loading: true,
@@ -257,6 +273,22 @@ export const useThreadViewStore = create<ThreadViewStore>((set, get) => {
         tokenUsage: null,
         warnings: [],
       }),
+
+    goBack: () => {
+      const { history, historyIndex } = get();
+      if (historyIndex <= 0) return;
+      const idx = historyIndex - 1;
+      set({ historyIndex: idx });
+      void get().open(history[idx], { fromHistory: true });
+    },
+
+    goForward: () => {
+      const { history, historyIndex } = get();
+      if (historyIndex < 0 || historyIndex >= history.length - 1) return;
+      const idx = historyIndex + 1;
+      set({ historyIndex: idx });
+      void get().open(history[idx], { fromHistory: true });
+    },
 
     /** 向前加载更早的回合。 */
     loadOlder: async () => {

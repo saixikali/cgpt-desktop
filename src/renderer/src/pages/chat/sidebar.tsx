@@ -1,13 +1,19 @@
 /**
- * 聊天侧栏（DSH Desktop 风格）：
- * 顶部品牌 → 新会话 → 工作区分组会话列表（搜索/归档过滤/新建工作区）→ 底部设置与终端入口。
+ * 聊天侧栏（参照任务式 AI 客户端布局）：
+ * 品牌 + 会话历史前进/后退 → 新建任务/搜索/自动化/插件市场菜单 →
+ * 「分组/项目」分段（平铺全部 / 按工作区分组）→ 底部账号、终端、设置。
  * 工作区对话框与会话行菜单逻辑自旧 thread-list.tsx 平移，未改业务行为。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Archive,
+  ArrowLeft,
+  ArrowRight,
+  Blocks,
   Ellipsis,
   Folder,
   FolderPlus,
+  Hash,
   Loader2,
   MessageSquarePlus,
   PanelLeftClose,
@@ -15,10 +21,10 @@ import {
   Plus,
   Search,
   Settings as SettingsIcon,
-  SlidersHorizontal,
   TerminalSquare,
   Trash2,
-  WandSparkles,
+  User,
+  Workflow,
   X,
 } from "lucide-react";
 import { t } from "../../i18n/zh.ts";
@@ -33,7 +39,7 @@ import { useApprovalsStore } from "../../store/approvals.ts";
 import { useTerminalStore } from "../../store/terminal.ts";
 import { formatRelativeTime, truncate } from "../../lib/format.ts";
 import { cn } from "../../lib/cn.ts";
-import { BrandMark, BrandWordmark } from "../../components/brand.tsx";
+import { BrandMark } from "../../components/brand.tsx";
 import { Button } from "../../components/ui/button.tsx";
 import { Dialog } from "../../components/ui/dialog.tsx";
 import { Input } from "../../components/ui/input.tsx";
@@ -43,6 +49,10 @@ import { SkeletonRows } from "../../components/ui/skeleton.tsx";
 import type { ThreadSummary } from "../../lib/types.ts";
 
 const COLLAPSE_KEY = "cgpt.sidebar.collapsed";
+const MODE_KEY = "cgpt.sidebar.listmode";
+
+/** groups=全部会话平铺；projects=按工作区分组。 */
+type ListMode = "groups" | "projects";
 
 const norm = (p: string) => p.replace(/\//g, "\\").toLowerCase().replace(/\\+$/, "");
 
@@ -538,6 +548,72 @@ function GroupHeader({
   );
 }
 
+/* ================= 主菜单项 ================= */
+
+function MenuRow({
+  icon: Icon,
+  label,
+  shortcut,
+  spin,
+  onClick,
+}: {
+  icon: typeof Search;
+  label: string;
+  shortcut?: string;
+  spin?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[14px] text-text-muted transition-colors hover:bg-hover hover:text-text"
+    >
+      <Icon className={cn("h-[18px] w-[18px] shrink-0", spin && "animate-spin")} strokeWidth={1.8} />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {shortcut && <span className="shrink-0 text-[11px] text-text-faint">{shortcut}</span>}
+    </button>
+  );
+}
+
+/* ================= 底部账号 ================= */
+
+interface AccountInfoResponse {
+  account?: { type?: string; email?: string | null } | null;
+}
+
+function AccountButton() {
+  const openSettings = useRouterStore((s) => s.openSettings);
+  const [email, setEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    call<AccountInfoResponse>(() => bridge().settings.account({}))
+      .then((r) => {
+        if (!cancelled) setEmail(r?.account?.email ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setEmail(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const name = email ? email.split("@")[0] || email : t.sidebar.localAccount;
+  return (
+    <button
+      title={t.sidebar.account}
+      onClick={() => openSettings("account")}
+      className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-1 text-left transition-colors hover:bg-hover"
+    >
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent-soft text-[13px] font-semibold text-accent">
+        {email ? name.slice(0, 1).toUpperCase() : <User className="h-4 w-4" />}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-text">{name}</span>
+    </button>
+  );
+}
+
 /* ================= 侧栏主体 ================= */
 
 export function Sidebar() {
@@ -556,14 +632,18 @@ export function Sidebar() {
   const projectsLoading = useProjectsStore((s) => s.loading);
   const projectsError = useProjectsStore((s) => s.error);
   const activeProjectId = useProjectsStore((s) => s.activeId);
-  const setActiveProject = useProjectsStore((s) => s.setActive);
 
   const setView = useRouterStore((s) => s.setView);
+  const openSettings = useRouterStore((s) => s.openSettings);
   const pendingCount = useApprovalsStore((s) => s.pending.length);
   const terminalSessions = useTerminalStore((s) => s.sessions.length);
   const terminalOpen = useTerminalStore((s) => s.open);
   const setTerminalOpen = useTerminalStore((s) => s.setOpen);
   const createTerminal = useTerminalStore((s) => s.create);
+  const goBack = useThreadViewStore((s) => s.goBack);
+  const goForward = useThreadViewStore((s) => s.goForward);
+  const historyIndex = useThreadViewStore((s) => s.historyIndex);
+  const historyLength = useThreadViewStore((s) => s.history.length);
 
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
@@ -581,6 +661,13 @@ export function Sidebar() {
   const [createOpen, setCreateOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [listMode, setListMode] = useState<ListMode>(() => {
+    try {
+      return localStorage.getItem(MODE_KEY) === "projects" ? "projects" : "groups";
+    } catch {
+      return "groups";
+    }
+  });
 
   useEffect(() => {
     if (backendReady && !initialized) void refresh();
@@ -593,6 +680,38 @@ export function Sidebar() {
     }, 300);
     return () => clearTimeout(id);
   }, [draft, query, search]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(MODE_KEY, listMode);
+    } catch {
+      /* ignore */
+    }
+  }, [listMode]);
+
+  // 全局快捷键：Ctrl+N 新建任务、Ctrl+K 聚焦搜索（输入焦点在表单内时不劫持）。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement | null)?.isContentEditable) {
+        return;
+      }
+      const key = e.key.toLowerCase();
+      if (key === "n") {
+        e.preventDefault();
+        void newThread();
+      } else if (key === "k") {
+        e.preventDefault();
+        setCollapsed(false);
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // newThread 每渲染重建，这里仅需挂载一次，命令读取的都是最新 store 状态。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleCollapsed = () => {
     const next = !collapsed;
@@ -649,14 +768,46 @@ export function Sidebar() {
       }
       g.threads.push(th);
     }
-    const visible = activeProjectId ? result.filter((g) => g.id === activeProjectId) : result;
-    if (!activeProjectId && remaining.length > 0) {
+    // 「项目」分段始终平铺全部工作区（activeProjectId 只影响新建任务的默认目录，不过滤列表）。
+    const visible = result;
+    if (remaining.length > 0) {
       visible.push({ id: null, name: t.sidebar.ungrouped, threads: remaining });
     }
     return visible;
-  }, [filtered, projects, activeProjectId]);
+  }, [filtered, projects, t.sidebar.ungrouped]);
 
-  const empty = initialized && groups.every((g) => g.threads.length === 0);
+  const flatEmpty = initialized && filtered.length === 0;
+  const projectEmpty = initialized && groups.every((g) => g.threads.length === 0);
+  const empty = listMode === "groups" ? flatEmpty : projectEmpty;
+
+  const terminalButton = (collapsedSize: boolean) => (
+    <button
+      title={t.sidebar.terminal}
+      onClick={() => {
+        if (terminalSessions === 0) void createTerminal();
+        else setTerminalOpen(!terminalOpen);
+      }}
+      className={cn(
+        "relative flex items-center justify-center rounded-lg",
+        collapsedSize ? "h-9 w-9" : "h-8 w-8",
+        terminalOpen ? "bg-accent-soft text-accent" : "text-text-faint hover:bg-hover hover:text-text",
+      )}
+    >
+      <TerminalSquare className={collapsedSize ? "h-[17px] w-[17px]" : "h-4 w-4"} strokeWidth={1.8} />
+      {terminalSessions > 0 && (
+        <span
+          className={cn(
+            "absolute rounded-full bg-accent font-semibold text-on-accent",
+            collapsedSize
+              ? "right-1 top-1 min-w-3.5 px-1 text-[8px] leading-[12px]"
+              : "right-0.5 top-0.5 min-w-3.5 px-1 text-[8px] leading-[12px]",
+          )}
+        >
+          {terminalSessions}
+        </span>
+      )}
+    </button>
+  );
 
   /* ---------- 收起态：仅图标 ---------- */
   if (collapsed) {
@@ -670,7 +821,7 @@ export function Sidebar() {
           <BrandMark size={22} />
         </button>
         <button
-          title={t.sidebar.newChat}
+          title={t.sidebar.newTask}
           onClick={() => void newThread()}
           className="relative flex h-9 w-9 items-center justify-center rounded-lg text-text-muted hover:bg-hover hover:text-text"
         >
@@ -686,25 +837,22 @@ export function Sidebar() {
         >
           <Search className="h-[17px] w-[17px]" strokeWidth={1.8} />
         </button>
-        <div className="flex-1" />
         <button
-          title={t.sidebar.terminal}
-          onClick={() => {
-            if (terminalSessions === 0) void createTerminal();
-            else setTerminalOpen(!terminalOpen);
-          }}
-          className={cn(
-            "relative flex h-9 w-9 items-center justify-center rounded-lg",
-            terminalOpen ? "bg-accent-soft text-accent" : "text-text-faint hover:bg-hover hover:text-text",
-          )}
+          title={t.sidebar.automation}
+          onClick={() => setView("wizard")}
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-text-faint hover:bg-hover hover:text-text"
         >
-          <TerminalSquare className="h-[17px] w-[17px]" strokeWidth={1.8} />
-          {terminalSessions > 0 && (
-            <span className="absolute right-1 top-1 min-w-3.5 rounded-full bg-accent px-1 text-[8px] font-semibold leading-[12px] text-on-accent">
-              {terminalSessions}
-            </span>
-          )}
+          <Workflow className="h-[17px] w-[17px]" strokeWidth={1.8} />
         </button>
+        <button
+          title={t.sidebar.marketplace}
+          onClick={() => openSettings("mcp")}
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-text-faint hover:bg-hover hover:text-text"
+        >
+          <Blocks className="h-[17px] w-[17px]" strokeWidth={1.8} />
+        </button>
+        <div className="flex-1" />
+        {terminalButton(true)}
         <button
           title={t.nav.settings}
           onClick={() => setView("settings")}
@@ -722,70 +870,103 @@ export function Sidebar() {
   /* ---------- 展开态 ---------- */
   return (
     <aside className="flex w-[280px] shrink-0 flex-col border-r border-border bg-surface">
-      {/* 品牌行 */}
-      <div className="flex h-12 shrink-0 items-center gap-2 px-3">
-        <BrandWordmark className="min-w-0 flex-1" />
+      {/* 品牌 + 会话历史导航 + 收起 */}
+      <div className="flex h-12 shrink-0 items-center gap-1 px-3">
+        <BrandMark size={26} radius={8} className="mr-1 shrink-0" />
+        <button
+          title={t.sidebar.back}
+          disabled={historyIndex <= 0}
+          onClick={goBack}
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-hover hover:text-text disabled:pointer-events-none disabled:opacity-30"
+        >
+          <ArrowLeft className="h-4 w-4" strokeWidth={1.8} />
+        </button>
+        <button
+          title={t.sidebar.forward}
+          disabled={historyIndex < 0 || historyIndex >= historyLength - 1}
+          onClick={goForward}
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-hover hover:text-text disabled:pointer-events-none disabled:opacity-30"
+        >
+          <ArrowRight className="h-4 w-4" strokeWidth={1.8} />
+        </button>
+        <div className="flex-1" />
         <button
           title={t.sidebar.collapse}
           onClick={toggleCollapsed}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-faint hover:bg-hover hover:text-text"
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-hover hover:text-text"
         >
           <PanelLeftClose className="h-4 w-4" strokeWidth={1.8} />
         </button>
       </div>
 
-      {/* 新会话 */}
-      <div className="shrink-0 px-3 pb-2">
-        <button
+      {/* 主菜单 */}
+      <nav className="flex shrink-0 flex-col gap-0.5 px-3 pb-1">
+        <MenuRow
+          icon={creating ? Loader2 : MessageSquarePlus}
+          spin={creating}
+          label={t.sidebar.newTask}
+          shortcut="Ctrl+N"
           onClick={() => void newThread()}
-          className="flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-border bg-surface-2 text-sm font-medium text-text shadow-sm transition-colors hover:bg-hover"
-        >
-          {creating ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Plus className="h-4 w-4" strokeWidth={2} />
-          )}
-          {t.sidebar.newChat}
-        </button>
-      </div>
+        />
+        <MenuRow
+          icon={Search}
+          label={t.sidebar.toggleSearch}
+          shortcut="Ctrl+K"
+          onClick={() => setSearchOpen(true)}
+        />
+        <MenuRow icon={Workflow} label={t.sidebar.automation} onClick={() => setView("wizard")} />
+        <MenuRow
+          icon={Blocks}
+          label={t.sidebar.marketplace}
+          onClick={() => openSettings("mcp")}
+        />
+      </nav>
 
-      {/* 工作区工具行 */}
-      <div className="flex h-8 shrink-0 items-center gap-1 px-3">
-        <button
-          onClick={() => void (activeProjectId ? setActiveProject(null) : undefined)}
-          className="flex-1 text-left text-xs font-medium text-text-muted"
-        >
-          {t.sidebar.workspace}
-        </button>
-        <button
-          title={t.sidebar.toggleSearch}
-          onClick={() => {
-            setSearchOpen((v) => !v);
-            if (searchOpen) setDraft("");
-          }}
-          className={cn(
-            "flex h-6 w-6 items-center justify-center rounded-md",
-            searchOpen ? "text-accent" : "text-text-faint hover:bg-hover hover:text-text",
-          )}
-        >
-          <Search className="h-3.5 w-3.5" strokeWidth={1.8} />
-        </button>
+      {/* 分组/项目分段 + 归档过滤 + 新建工作区 */}
+      <div className="flex shrink-0 items-center gap-1 px-3 pb-2 pt-2">
+        <div className="flex items-center gap-0.5 rounded-full bg-surface-2 p-0.5">
+          <button
+            onClick={() => setListMode("groups")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs transition-colors",
+              listMode === "groups"
+                ? "bg-surface-3 font-medium text-text"
+                : "text-text-faint hover:text-text",
+            )}
+          >
+            <Hash className="h-3.5 w-3.5" strokeWidth={2} />
+            {t.sidebar.tabGroups}
+          </button>
+          <button
+            onClick={() => setListMode("projects")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs transition-colors",
+              listMode === "projects"
+                ? "bg-surface-3 font-medium text-text"
+                : "text-text-faint hover:text-text",
+            )}
+          >
+            <Folder className="h-3.5 w-3.5" strokeWidth={2} />
+            {t.sidebar.tabProjects}
+          </button>
+        </div>
+        <div className="flex-1" />
         <button
           title={t.sidebar.toggleArchived}
           onClick={() => setShowArchived((v) => !v)}
           className={cn(
-            "flex h-6 w-6 items-center justify-center rounded-md",
+            "flex h-7 w-7 items-center justify-center rounded-lg",
             showArchived ? "text-accent" : "text-text-faint hover:bg-hover hover:text-text",
           )}
         >
-          <SlidersHorizontal className="h-3.5 w-3.5" strokeWidth={1.8} />
+          <Archive className="h-4 w-4" strokeWidth={1.8} />
         </button>
         <button
           title={t.sidebar.newWorkspace}
           onClick={() => setCreateOpen(true)}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-text-faint hover:bg-hover hover:text-text"
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-faint hover:bg-hover hover:text-text"
         >
-          <FolderPlus className="h-3.5 w-3.5" strokeWidth={1.8} />
+          <FolderPlus className="h-4 w-4" strokeWidth={1.8} />
         </button>
       </div>
 
@@ -798,6 +979,12 @@ export function Sidebar() {
               autoFocus
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setDraft("");
+                  setSearchOpen(false);
+                }
+              }}
               placeholder={t.sidebar.search}
               className="h-8 w-full select-text rounded-lg border border-border bg-surface-2 pl-8 pr-7 text-xs text-text placeholder:text-text-faint focus:border-accent/50 focus:outline-none"
             />
@@ -846,30 +1033,43 @@ export function Sidebar() {
             }
           }}
         >
-          <div className="flex flex-col gap-0.5 px-2 pb-2">
-            {groups.map((g) => (
-              <div key={g.id ?? "__ungrouped"}>
-                <GroupHeader
-                  projectId={g.id}
-                  name={g.name}
-                  active={g.id !== null && g.id === activeProjectId}
-                  onMenu={(target, kind) =>
-                    kind === "rename" ? setRenameTarget(target) : setDeleteTarget(target)
-                  }
-                />
-                <div className="flex flex-col gap-px pl-2.5">
-                  {g.threads.map((th) => (
-                    <ThreadRow key={th.id} thread={th} active={activeThreadId === th.id} />
-                  ))}
+          {listMode === "groups" ? (
+            <div className="flex flex-col gap-px px-2 pb-2">
+              {filtered.map((th) => (
+                <ThreadRow key={th.id} thread={th} active={activeThreadId === th.id} />
+              ))}
+              {loadingMore && (
+                <div className="flex justify-center py-2 text-text-faint">
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 </div>
-              </div>
-            ))}
-            {loadingMore && (
-              <div className="flex justify-center py-2 text-text-faint">
-                <Loader2 className="h-4 w-4 animate-spin" />
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-0.5 px-2 pb-2">
+              {groups.map((g) => (
+                <div key={g.id ?? "__ungrouped"}>
+                  <GroupHeader
+                    projectId={g.id}
+                    name={g.name}
+                    active={g.id !== null && g.id === activeProjectId}
+                    onMenu={(target, kind) =>
+                      kind === "rename" ? setRenameTarget(target) : setDeleteTarget(target)
+                    }
+                  />
+                  <div className="flex flex-col gap-px pl-2.5">
+                    {g.threads.map((th) => (
+                      <ThreadRow key={th.id} thread={th} active={activeThreadId === th.id} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {loadingMore && (
+                <div className="flex justify-center py-2 text-text-faint">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                </div>
+              )}
+            </div>
+          )}
         </ScrollArea>
       )}
 
@@ -880,41 +1080,16 @@ export function Sidebar() {
         </div>
       )}
 
-      {/* 底部：向导 / 终端 / 设置 */}
-      <div className="flex h-12 shrink-0 items-center gap-1 border-t border-border px-2">
-        <button
-          title={t.nav.wizard}
-          onClick={() => setView("wizard")}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-text-faint hover:bg-hover hover:text-text"
-        >
-          <WandSparkles className="h-4 w-4" strokeWidth={1.8} />
-        </button>
-        <button
-          title={t.sidebar.terminal}
-          onClick={() => {
-            if (terminalSessions === 0) void createTerminal();
-            else setTerminalOpen(!terminalOpen);
-          }}
-          className={cn(
-            "relative flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs",
-            terminalOpen ? "bg-accent-soft text-accent" : "text-text-muted hover:bg-hover hover:text-text",
-          )}
-        >
-          <TerminalSquare className="h-4 w-4" strokeWidth={1.8} />
-          {terminalSessions > 0 && (
-            <span className="min-w-4 rounded-full bg-accent px-1 text-center text-[9px] font-semibold leading-4 text-on-accent">
-              {terminalSessions}
-            </span>
-          )}
-        </button>
-        <div className="flex-1" />
+      {/* 底部：账号 / 终端 / 设置 */}
+      <div className="flex h-14 shrink-0 items-center gap-1 border-t border-border px-2.5">
+        <AccountButton />
+        {terminalButton(false)}
         <button
           title={t.nav.settings}
           onClick={() => setView("settings")}
-          className="relative flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs text-text-muted hover:bg-hover hover:text-text"
+          className="relative flex h-8 w-8 items-center justify-center rounded-lg text-text-faint hover:bg-hover hover:text-text"
         >
           <SettingsIcon className="h-4 w-4" strokeWidth={1.8} />
-          {t.sidebar.settings}
           {pendingCount > 0 && (
             <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-danger ring-2 ring-surface" />
           )}
