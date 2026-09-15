@@ -606,8 +606,13 @@ function AccountButton() {
       onClick={() => openSettings("account")}
       className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-1 text-left transition-colors hover:bg-hover"
     >
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent-soft text-[13px] font-semibold text-accent">
-        {email ? name.slice(0, 1).toUpperCase() : <User className="h-4 w-4" />}
+      <span
+        className={cn(
+          "flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[13px] font-semibold",
+          email ? "bg-accent-soft text-accent" : "bg-neutral-300 text-white",
+        )}
+      >
+        {email ? name.slice(0, 1).toUpperCase() : <User className="h-4 w-4" strokeWidth={2} />}
       </span>
       <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-text">{name}</span>
     </button>
@@ -790,14 +795,16 @@ export function Sidebar() {
       className={cn(
         "relative flex items-center justify-center rounded-lg",
         collapsedSize ? "h-9 w-9" : "h-8 w-8",
-        terminalOpen ? "bg-accent-soft text-accent" : "text-text-faint hover:bg-hover hover:text-text",
+        terminalOpen
+          ? "bg-orange-500/10 text-orange-500"
+          : "text-orange-500 hover:bg-orange-500/10",
       )}
     >
       <TerminalSquare className={collapsedSize ? "h-[17px] w-[17px]" : "h-4 w-4"} strokeWidth={1.8} />
       {terminalSessions > 0 && (
         <span
           className={cn(
-            "absolute rounded-full bg-accent font-semibold text-on-accent",
+            "absolute rounded-full bg-orange-500 font-semibold text-white",
             collapsedSize
               ? "right-1 top-1 min-w-3.5 px-1 text-[8px] leading-[12px]"
               : "right-0.5 top-0.5 min-w-3.5 px-1 text-[8px] leading-[12px]",
