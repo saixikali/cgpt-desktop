@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Blocks,
+  ChevronRight,
   Ellipsis,
   Folder,
   FolderPlus,
@@ -50,6 +51,9 @@ import type { ThreadSummary } from "../../lib/types.ts";
 
 const COLLAPSE_KEY = "cgpt.sidebar.collapsed";
 const MODE_KEY = "cgpt.sidebar.listmode";
+const COLLAPSED_GROUPS_KEY = "cgpt.sidebar.collapsedgroups";
+/** 未分组组在折叠状态集合中的键。 */
+const UNGROUPED_KEY = "__ungrouped";
 
 /** groups=全部会话平铺；projects=按工作区分组。 */
 type ListMode = "groups" | "projects";
@@ -474,11 +478,17 @@ function GroupHeader({
   projectId,
   name,
   active,
+  collapsed,
+  count,
+  onToggleCollapse,
   onMenu,
 }: {
   projectId: string | null;
   name: string;
   active: boolean;
+  collapsed: boolean;
+  count: number;
+  onToggleCollapse: () => void;
   onMenu: (target: { id: string; name: string }, kind: "rename" | "delete") => void;
 }) {
   const setActive = useProjectsStore((s) => s.setActive);
@@ -489,16 +499,31 @@ function GroupHeader({
   return (
     <div
       className={cn(
-        "group relative mt-1 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs",
+        "group relative mt-1 flex items-center gap-0.5 rounded-md py-1.5 pl-1 pr-2 text-xs",
         active ? "text-text" : "text-text-muted hover:bg-hover",
       )}
     >
       <button
-        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+        title={collapsed ? t.sidebar.expandGroup : t.sidebar.collapseGroup}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleCollapse();
+        }}
+        className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-text-faint hover:bg-surface-3 hover:text-text"
+      >
+        <ChevronRight
+          className="h-3.5 w-3.5 transition-transform duration-150"
+          style={{ transform: collapsed ? "rotate(0deg)" : "rotate(90deg)" }}
+          strokeWidth={2}
+        />
+      </button>
+      <button
+        className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-0.5 text-left"
         onClick={() => void setActive(active ? null : projectId)}
       >
         <Folder className={cn("h-3.5 w-3.5 shrink-0", active ? "text-accent" : "text-text-faint")} strokeWidth={1.8} />
         <span className="truncate font-medium">{name}</span>
+        {collapsed && <span className="ml-auto shrink-0 pr-1 text-[10px] tabular-nums text-text-faint">{count}</span>}
       </button>
       {project && (
         <>
@@ -673,6 +698,15 @@ export function Sidebar() {
       return "groups";
     }
   });
+  // 「项目」分段下各工作区组的折叠状态（键为工作区 id，未分组用 UNGROUPED_KEY）。
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(COLLAPSED_GROUPS_KEY) ?? "[]") as unknown;
+      return new Set(Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : []);
+    } catch {
+      return new Set();
+    }
+  });
 
   useEffect(() => {
     if (backendReady && !initialized) void refresh();
@@ -693,6 +727,22 @@ export function Sidebar() {
       /* ignore */
     }
   }, [listMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify([...collapsedGroups]));
+    } catch {
+      /* ignore */
+    }
+  }, [collapsedGroups]);
+
+  const toggleGroup = (key: string) =>
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   // 全局快捷键：Ctrl+N 新建任务、Ctrl+K 聚焦搜索（输入焦点在表单内时不劫持）。
   useEffect(() => {
@@ -1053,23 +1103,32 @@ export function Sidebar() {
             </div>
           ) : (
             <div className="flex flex-col gap-0.5 px-2 pb-2">
-              {groups.map((g) => (
-                <div key={g.id ?? "__ungrouped"}>
-                  <GroupHeader
-                    projectId={g.id}
-                    name={g.name}
-                    active={g.id !== null && g.id === activeProjectId}
-                    onMenu={(target, kind) =>
-                      kind === "rename" ? setRenameTarget(target) : setDeleteTarget(target)
-                    }
-                  />
-                  <div className="flex flex-col gap-px pl-2.5">
-                    {g.threads.map((th) => (
-                      <ThreadRow key={th.id} thread={th} active={activeThreadId === th.id} />
-                    ))}
+              {groups.map((g) => {
+                const groupKey = g.id ?? UNGROUPED_KEY;
+                const groupCollapsed = collapsedGroups.has(groupKey);
+                return (
+                  <div key={groupKey}>
+                    <GroupHeader
+                      projectId={g.id}
+                      name={g.name}
+                      active={g.id !== null && g.id === activeProjectId}
+                      collapsed={groupCollapsed}
+                      count={g.threads.length}
+                      onToggleCollapse={() => toggleGroup(groupKey)}
+                      onMenu={(target, kind) =>
+                        kind === "rename" ? setRenameTarget(target) : setDeleteTarget(target)
+                      }
+                    />
+                    {!groupCollapsed && (
+                      <div className="flex flex-col gap-px pl-2.5">
+                        {g.threads.map((th) => (
+                          <ThreadRow key={th.id} thread={th} active={activeThreadId === th.id} />
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {loadingMore && (
                 <div className="flex justify-center py-2 text-text-faint">
                   <Loader2 className="h-4 w-4 animate-spin" />

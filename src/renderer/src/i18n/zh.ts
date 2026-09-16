@@ -120,6 +120,8 @@ export const t = {
     forward: "下一个会话",
     collapse: "收起侧栏",
     expand: "展开侧栏",
+    collapseGroup: "折叠分组",
+    expandGroup: "展开分组",
   },
   welcome: {
     slogan: "让 Codex 成为你的工程搭档",
