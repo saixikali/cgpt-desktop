@@ -46,6 +46,47 @@ type AnyHandler = (
   appVersion?: string,
 ) => Promise<unknown> | unknown;
 
+/* ---------------- 工作区去重 ---------------- */
+
+interface ProjectLike {
+  id: string;
+  name?: string | null;
+  roots?: Array<{ path?: string | null }> | null;
+}
+
+/** Windows 下归一化工作目录（反斜杠/小写/去尾部斜杠），用于同目录判定。 */
+const normProjectRoot = (p: string): string =>
+  p.replace(/\//g, "\\").trim().toLowerCase().replace(/\\+$/, "");
+
+/**
+ * 查找工作目录集合完全相同的已有项目：向导重复完成/重复新建同目录时直接复用，
+ * 避免后端堆积同名同目录的重复项目记录。
+ */
+async function findProjectWithRoots(
+  api: ReturnType<BackendService["api"]>,
+  rootPaths: string[],
+): Promise<ProjectLike | null> {
+  const want = new Set(rootPaths.filter(Boolean).map(normProjectRoot));
+  if (want.size === 0) return null;
+  try {
+    const page = (await api.listProjects({ limit: 100 })) as { data?: unknown };
+    if (!Array.isArray(page.data)) return null;
+    for (const raw of page.data) {
+      const p = raw as ProjectLike;
+      if (!p?.id || !Array.isArray(p.roots)) continue;
+      const got = new Set(
+        p.roots.map((r) => (r?.path ? normProjectRoot(r.path) : "")).filter(Boolean),
+      );
+      if (got.size === want.size && [...want].every((x) => got.has(x))) return p;
+    }
+  } catch (err) {
+    logger.warn("查找同目录工作区失败，按新建处理", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return null;
+}
+
 function errorShape(err: unknown): IpcErrorShape {
   if (err instanceof BackendNotReadyError) return { code: "BACKEND_NOT_READY", message: err.message };
   if (err instanceof MethodUnavailableError) return { code: "METHOD_UNAVAILABLE", message: err.message };
@@ -140,16 +181,27 @@ const HANDLERS: Record<string, AnyHandler> = {
     let project: unknown = null;
     let degraded = false;
     try {
-      const res = await ctx.backend.api().createProject({
-        name: input.title?.trim() || basename(input.projectPath),
-        roots: [{ path: input.projectPath }],
-        idempotencyKey: randomUUID(),
-      });
-      project = res.project;
-      ctx.settings.update({
-        wizardCompleted: true,
-        activeProjectId: (res.project as { id?: string })?.id ?? null,
-      });
+      const api = ctx.backend.api();
+      // 同一目录重复完成向导时复用已有项目，不再产生重复记录。
+      const existing = await findProjectWithRoots(api, [input.projectPath]);
+      if (existing) {
+        project = existing;
+        ctx.settings.update({
+          wizardCompleted: true,
+          activeProjectId: existing.id,
+        });
+      } else {
+        const res = await api.createProject({
+          name: input.title?.trim() || basename(input.projectPath),
+          roots: [{ path: input.projectPath }],
+          idempotencyKey: randomUUID(),
+        });
+        project = res.project;
+        ctx.settings.update({
+          wizardCompleted: true,
+          activeProjectId: (res.project as { id?: string })?.id ?? null,
+        });
+      }
     } catch (err) {
       // experimentalApi 缺失时降级为"最近目录模式"：不建 project，仅持久化 roots。
       if (err instanceof MethodUnavailableError) {
@@ -185,8 +237,15 @@ const HANDLERS: Record<string, AnyHandler> = {
   // ---------- projects ----------
   [C.projects.list]: (ctx, i) => ctx.backend.api().listProjects(i ?? {}),
   [C.projects.read]: (ctx, i) => ctx.backend.api().readProject(i),
-  [C.projects.create]: (ctx, i) =>
-    ctx.backend.api().createProject({ idempotencyKey: randomUUID(), roots: [], name: "", ...i }),
+  [C.projects.create]: async (ctx, i) => {
+    const rootPaths = (i.roots ?? []).map((r: { path: string }) => r.path).filter(Boolean);
+    // 同目录集合的项目已存在时直接复用（侧栏新建工作区与向导共用去重规则）。
+    if (rootPaths.length > 0) {
+      const existing = await findProjectWithRoots(ctx.backend.api(), rootPaths);
+      if (existing) return { project: existing };
+    }
+    return ctx.backend.api().createProject({ idempotencyKey: randomUUID(), roots: [], name: "", ...i });
+  },
   [C.projects.update]: (ctx, i) => ctx.backend.api().updateProject(i),
   [C.projects.remove]: (ctx, i) => ctx.backend.api().deleteProject(i),
   [C.projects.import]: (ctx, i) => ctx.backend.api().importProject(i),
