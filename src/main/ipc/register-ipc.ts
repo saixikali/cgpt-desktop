@@ -5,10 +5,10 @@
  *  - fs 读取强制 roots 白名单；resume/start 成功后自动登记新 roots
  */
 import { randomUUID } from "node:crypto";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 import { homedir, release } from "node:os";
-import { dialog, ipcMain, shell, BrowserWindow } from "electron";
-import { readdir } from "node:fs/promises";
+import { app, dialog, ipcMain, shell, BrowserWindow } from "electron";
+import { mkdir, readdir } from "node:fs/promises";
 import { z } from "zod";
 import {
   CHANNELS as C,
@@ -85,6 +85,23 @@ async function findProjectWithRoots(
     });
   }
   return null;
+}
+
+/* ---------------- 纯对话（日常聊天） ---------------- */
+
+/**
+ * 纯对话会话统一使用的托管工作目录（userData/chat-space）。
+ * Codex thread 必须有 cwd，该目录仅作中性载体：只读沙箱 + 免审批，
+ * 渲染层据此路径识别"纯对话"会话，与任务/工作区会话隔离展示。
+ */
+function chatSpaceDir(): string {
+  return join(app.getPath("userData"), "chat-space");
+}
+
+async function ensureChatSpace(): Promise<string> {
+  const dir = chatSpaceDir();
+  await mkdir(dir, { recursive: true });
+  return dir;
 }
 
 function errorShape(err: unknown): IpcErrorShape {
@@ -165,6 +182,7 @@ const HANDLERS: Record<string, AnyHandler> = {
     if (err) throw new Error(err);
     return null;
   },
+  [C.app.chatSpace]: async () => ensureChatSpace(),
 
   // ---------- backend / wizard ----------
   [C.backend.status]: async (ctx) => ctx.backend.getStatus(),
@@ -259,9 +277,23 @@ const HANDLERS: Record<string, AnyHandler> = {
     ctx.settings.addRoots(collectRoots(res));
     return res;
   },
+  // 纯对话：托管中性目录 + 只读沙箱 + 免审批；不登记进用户工作区 roots。
+  [C.threads.startChat]: async (ctx) => {
+    const cwd = await ensureChatSpace();
+    const res = await ctx.backend.api().startThread({
+      cwd,
+      sandbox: "read-only",
+      approvalPolicy: "never",
+    });
+    return res;
+  },
   [C.threads.resume]: async (ctx, i) => {
     const res = await ctx.backend.api().resumeThread(i);
-    ctx.settings.addRoots(collectRoots(res));
+    // 纯对话会话的托管目录不出现在向导最近目录里。
+    const roots = collectRoots(res).filter(
+      (r) => normProjectRoot(r) !== normProjectRoot(chatSpaceDir()),
+    );
+    ctx.settings.addRoots(roots);
     return res;
   },
   [C.threads.fork]: (ctx, i) => ctx.backend.api().forkThread(i),

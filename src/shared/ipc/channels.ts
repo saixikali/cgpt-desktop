@@ -11,6 +11,7 @@ export const CHANNELS = {
     showItem: "app:show-item",
     openExternal: "app:open-external",
     openLogsDir: "app:open-logs-dir",
+    chatSpace: "app:chat-space",
   },
   backend: {
     status: "backend:status",
@@ -33,6 +34,7 @@ export const CHANNELS = {
     list: "threads:list",
     read: "threads:read",
     start: "threads:start",
+    startChat: "threads:start-chat",
     resume: "threads:resume",
     fork: "threads:fork",
     archive: "threads:archive",

@@ -7,11 +7,12 @@
  *  - 支持附加本地图片（localImage）
  *  - 底部工具条左侧为全局沙箱模式选择（写 config.toml，对新会话生效）
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, Check, ChevronDown, ImagePlus, Plus, Send, Square, X } from "lucide-react";
 import { t } from "../../i18n/zh.ts";
 import { bridge, call } from "../../lib/ipc.ts";
 import { useApprovalsStore } from "../../store/approvals.ts";
+import { useChatModeStore } from "../../store/chat-mode.ts";
 import { useProjectsStore } from "../../store/projects.ts";
 import { useSettingsStore } from "../../store/settings.ts";
 import { useThreadViewStore } from "../../store/thread-view.ts";
@@ -190,10 +191,31 @@ export function Composer() {
   const threadId = useThreadViewStore((s) => s.threadId);
   const streaming = useThreadViewStore((s) => s.streaming);
   const open = useThreadViewStore((s) => s.open);
+  const activeThread = useThreadViewStore((s) => s.thread);
   const startThread = useThreadsStore((s) => s.start);
+  const startChatThread = useThreadsStore((s) => s.startChat);
   const toastError = useToastStore((s) => s.error);
 
+  // 纯对话判定：有会话看 cwd 是否命中托管目录；无会话（欢迎页）看当前分段。
+  const listMode = useChatModeStore((s) => s.listMode);
+  const isChatPath = useChatModeStore((s) => s.isChatPath);
+  const spaceReady = useChatModeStore((s) => s.spaceReady);
+  const initSpace = useChatModeStore((s) => s.initSpace);
+  const isChat = useMemo(() => {
+    if (!threadId) return listMode === "chat";
+    // 会话详情未加载时按分段兜底，避免沙箱控件短暂闪现。
+    if (!activeThread) return listMode === "chat";
+    return isChatPath(activeThread.cwd);
+    // spaceReady 决定 isChatPath 结果，作为依赖触发重算。
+  }, [threadId, activeThread, listMode, isChatPath, spaceReady]);
+
   const activeProject = useProjectsStore((s) => s.items.find((p) => p.id === s.activeId) ?? null);
+
+  useEffect(() => {
+    void initSpace().catch(() => {
+      /* 判定保持 false，侧栏挂载时通常已初始化 */
+    });
+  }, [initSpace]);
 
   // 当轮模型/推理力度覆盖（按会话记忆；新会话用 pending）。
   const overrides = useTurnOverridesStore((s) =>
@@ -229,12 +251,17 @@ export function Composer() {
     try {
       let tid = threadId;
       if (!tid) {
-        let cwd = activeProject?.roots[0] ?? null;
-        if (!cwd) {
-          cwd = await call<string | null>(() => bridge().app.pickDirectory(undefined));
-          if (!cwd) return;
+        if (listMode === "chat") {
+          // 纯对话：直接用托管目录建会话，不弹目录选择器、不传 projectId。
+          tid = await startChatThread();
+        } else {
+          let cwd = activeProject?.roots[0] ?? null;
+          if (!cwd) {
+            cwd = await call<string | null>(() => bridge().app.pickDirectory(undefined));
+            if (!cwd) return;
+          }
+          tid = await startThread(cwd, activeProject?.id ?? null);
         }
-        tid = await startThread(cwd, activeProject?.id ?? null);
         // 建会话前选择的当轮覆盖挂到新会话上。
         useTurnOverridesStore.getState().adoptPending(tid);
         await open(tid);
@@ -398,7 +425,13 @@ export function Composer() {
             onKeyDown={onKeyDown}
             onCompositionStart={() => (composing.current = true)}
             onCompositionEnd={() => (composing.current = false)}
-            placeholder={streaming ? "向进行中的回合追加指令（Enter 发送）" : t.chat.inputPlaceholder}
+            placeholder={
+              streaming
+                ? "向进行中的回合追加指令（Enter 发送）"
+                : isChat
+                  ? t.chat.chatInputPlaceholder
+                  : t.chat.inputPlaceholder
+            }
             className="max-h-48 min-h-[52px] w-full resize-none bg-transparent px-4 py-3 text-[13px] leading-relaxed text-text placeholder:text-text-faint focus:outline-none"
           />
           <div className="flex items-center gap-1 px-2 pb-2">
@@ -409,7 +442,8 @@ export function Composer() {
             >
               {images.length > 0 ? <ImagePlus className="h-4 w-4" strokeWidth={1.8} /> : <Plus className="h-[18px] w-[18px]" strokeWidth={1.8} />}
             </button>
-            <SandboxSelect compact />
+            {/* 纯对话为固定只读沙箱 + 免审批，不展示全局沙箱切换。 */}
+            {!isChat && <SandboxSelect compact />}
 
             <div className="flex-1" />
 

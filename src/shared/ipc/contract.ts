@@ -45,6 +45,7 @@ export const INPUTS = {
     .object({ url: z.string().url().refine((u) => /^https?:\/\//i.test(u), "仅允许 http/https 链接") })
     .strict(),
   [CHANNELS.app.openLogsDir]: voidInput,
+  [CHANNELS.app.chatSpace]: voidInput,
 
   [CHANNELS.backend.status]: voidInput,
   [CHANNELS.backend.restart]: z.object({ reason: z.string().max(200).optional() }).strict().optional(),
@@ -77,6 +78,7 @@ export const INPUTS = {
   [CHANNELS.threads.list]: cursorPage.optional(),
   [CHANNELS.threads.read]: threadId,
   [CHANNELS.threads.start]: z.object({ cwd: z.string().min(1) }).passthrough(),
+  [CHANNELS.threads.startChat]: voidInput,
   [CHANNELS.threads.resume]: threadId,
   [CHANNELS.threads.fork]: threadId,
   [CHANNELS.threads.archive]: threadId,

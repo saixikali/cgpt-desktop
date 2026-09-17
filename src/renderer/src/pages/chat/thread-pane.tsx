@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUpToLine,
@@ -8,6 +8,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { t } from "../../i18n/zh.ts";
+import { useChatModeStore } from "../../store/chat-mode.ts";
 import { useThreadViewStore } from "../../store/thread-view.ts";
 import { Badge } from "../../components/ui/badge.tsx";
 import { Button } from "../../components/ui/button.tsx";
@@ -59,6 +60,24 @@ export function ThreadPane() {
   const warnings = useThreadViewStore((s) => s.warnings);
   const loadOlder = useThreadViewStore((s) => s.loadOlder);
 
+  // 纯对话判定：有会话看 cwd 是否命中托管目录；无会话（欢迎页）看当前分段。
+  const listMode = useChatModeStore((s) => s.listMode);
+  const isChatPath = useChatModeStore((s) => s.isChatPath);
+  const spaceReady = useChatModeStore((s) => s.spaceReady);
+  const initSpace = useChatModeStore((s) => s.initSpace);
+  const isChat = useMemo(() => {
+    if (!threadId) return listMode === "chat";
+    // 会话详情未加载时按分段兜底，避免工程控件短暂闪现。
+    if (!thread) return listMode === "chat";
+    return isChatPath(thread.cwd);
+  }, [threadId, thread, listMode, isChatPath, spaceReady]);
+
+  useEffect(() => {
+    void initSpace().catch(() => {
+      /* 判定保持 false，侧栏挂载时通常已初始化 */
+    });
+  }, [initSpace]);
+
   const scrollRef = useRef<HTMLDivElement | null>(null);
   /** 跟随滚动：用户贴近底部时自动跟随新输出，上滚后挂起。 */
   const followRef = useRef(true);
@@ -106,10 +125,15 @@ export function ThreadPane() {
               </span>
             </div>
           </div>
-          <div className="flex w-full max-w-3xl items-center gap-2">
-            <WorkspacePill />
-            <PolicySelect />
-          </div>
+          {isChat ? (
+            // 纯对话欢迎页：不展示工作区与审批策略，仅一句场景提示。
+            <p className="text-xs text-text-faint">{t.chat.chatWelcomeHint}</p>
+          ) : (
+            <div className="flex w-full max-w-3xl items-center gap-2">
+              <WorkspacePill />
+              <PolicySelect />
+            </div>
+          )}
           <Composer />
         </div>
       </div>
@@ -131,11 +155,17 @@ export function ThreadPane() {
           thread?.status && <Badge tone="accent">{thread.status}</Badge>
         )}
         <TokenUsageChip />
-        {thread?.cwd && (
-          <span className="ml-auto flex shrink-0 items-center gap-1 text-[11px] text-text-faint">
-            <FolderGit2 className="h-3 w-3" />
-            <span className="max-w-[320px] truncate">{thread.cwd}</span>
-          </span>
+        {isChat ? (
+          <Badge tone="neutral" className="ml-auto shrink-0">
+            {t.sidebar.chatBadge}
+          </Badge>
+        ) : (
+          thread?.cwd && (
+            <span className="ml-auto flex shrink-0 items-center gap-1 text-[11px] text-text-faint">
+              <FolderGit2 className="h-3 w-3" />
+              <span className="max-w-[320px] truncate">{thread.cwd}</span>
+            </span>
+          )
         )}
       </header>
 

@@ -1,7 +1,8 @@
 /**
  * 聊天侧栏（参照任务式 AI 客户端布局）：
- * 品牌 + 会话历史前进/后退 → 新建任务/搜索/自动化/插件市场菜单 →
- * 「分组/项目」分段（平铺全部 / 按工作区分组）→ 底部账号、终端、设置。
+ * 品牌 + 会话历史前进/后退 → 新建任务/新建对话/搜索/自动化/插件市场菜单 →
+ * 「分组/项目/对话」分段（平铺全部 / 按工作区分组 / 纯对话）→ 底部账号、终端、设置。
+ * 纯对话会话 cwd 命中 userData/chat-space 托管目录，与任务会话互不混杂。
  * 工作区对话框与会话行菜单逻辑自旧 thread-list.tsx 平移，未改业务行为。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -16,6 +17,7 @@ import {
   FolderPlus,
   Hash,
   Loader2,
+  MessagesSquare,
   MessageSquarePlus,
   PanelLeftClose,
   Pencil,
@@ -31,6 +33,7 @@ import {
 import { t } from "../../i18n/zh.ts";
 import { bridge, call } from "../../lib/ipc.ts";
 import { useBackendStore } from "../../store/backend.ts";
+import { useChatModeStore } from "../../store/chat-mode.ts";
 import { useProjectsStore } from "../../store/projects.ts";
 import { useThreadsStore } from "../../store/threads.ts";
 import { useThreadViewStore } from "../../store/thread-view.ts";
@@ -50,13 +53,9 @@ import { SkeletonRows } from "../../components/ui/skeleton.tsx";
 import type { ThreadSummary } from "../../lib/types.ts";
 
 const COLLAPSE_KEY = "cgpt.sidebar.collapsed";
-const MODE_KEY = "cgpt.sidebar.listmode";
 const COLLAPSED_GROUPS_KEY = "cgpt.sidebar.collapsedgroups";
 /** 未分组组在折叠状态集合中的键。 */
 const UNGROUPED_KEY = "__ungrouped";
-
-/** groups=全部会话平铺；projects=按工作区分组。 */
-type ListMode = "groups" | "projects";
 
 const norm = (p: string) => p.replace(/\//g, "\\").toLowerCase().replace(/\\+$/, "");
 
@@ -653,10 +652,18 @@ export function Sidebar() {
   const search = useThreadsStore((s) => s.search);
   const loadMore = useThreadsStore((s) => s.loadMore);
   const startThread = useThreadsStore((s) => s.start);
+  const startChatThread = useThreadsStore((s) => s.startChat);
   const activeThreadId = useThreadViewStore((s) => s.threadId);
   const openThread = useThreadViewStore((s) => s.open);
   const backendReady = useBackendStore((s) => s.status?.state === "ready");
   const toastError = useToastStore((s) => s.error);
+
+  // 纯对话模式：三段分段状态 + 托管目录判定（全局 store，Composer/主区共用）。
+  const listMode = useChatModeStore((s) => s.listMode);
+  const setListMode = useChatModeStore((s) => s.setListMode);
+  const spaceReady = useChatModeStore((s) => s.spaceReady);
+  const isChatPath = useChatModeStore((s) => s.isChatPath);
+  const initSpace = useChatModeStore((s) => s.initSpace);
 
   const projects = useProjectsStore((s) => s.items);
   const projectsLoading = useProjectsStore((s) => s.loading);
@@ -686,18 +693,12 @@ export function Sidebar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [chatCreating, setChatCreating] = useState(false);
   const pickLock = useRef(false);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
-  const [listMode, setListMode] = useState<ListMode>(() => {
-    try {
-      return localStorage.getItem(MODE_KEY) === "projects" ? "projects" : "groups";
-    } catch {
-      return "groups";
-    }
-  });
   // 「项目」分段下各工作区组的折叠状态（键为工作区 id，未分组用 UNGROUPED_KEY）。
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
     try {
@@ -712,6 +713,13 @@ export function Sidebar() {
     if (backendReady && !initialized) void refresh();
   }, [backendReady, initialized, refresh]);
 
+  // 拉取纯对话托管目录（仅本地 mkdir，不依赖后端就绪）。
+  useEffect(() => {
+    void initSpace().catch(() => {
+      /* 失败时 isChatPath 保持 false，重试留待下次挂载 */
+    });
+  }, [initSpace]);
+
   useEffect(() => {
     const q = draft.trim();
     const id = setTimeout(() => {
@@ -719,14 +727,6 @@ export function Sidebar() {
     }, 300);
     return () => clearTimeout(id);
   }, [draft, query, search]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(MODE_KEY, listMode);
-    } catch {
-      /* ignore */
-    }
-  }, [listMode]);
 
   useEffect(() => {
     try {
@@ -800,17 +800,44 @@ export function Sidebar() {
     }
   };
 
+  // 新建纯对话：不弹目录选择器，托管目录 + 只读沙箱 + 免审批，切到「对话」分段。
+  const newChat = async () => {
+    if (chatCreating) return;
+    try {
+      setChatCreating(true);
+      const id = await startChatThread();
+      setListMode("chat");
+      await openThread(id);
+    } catch (err) {
+      toastError(t.sidebar.chatFailed, err instanceof Error ? err.message : String(err));
+    } finally {
+      setChatCreating(false);
+    }
+  };
+
   // 归档过滤 + 搜索结果（store 已按 query 拉取，本地再兜 archived）。
   const filtered = useMemo(
     () => (showArchived ? items : items.filter((th) => !th.archived)),
     [items, showArchived],
   );
 
+  // 纯对话分流：cwd 命中托管目录的会话只进「对话」分段，
+  // 绝不允许落入任务列表的「未分组」（spaceReady 前短暂误置，就绪后自动纠正）。
+  const chatThreads = useMemo(
+    () => filtered.filter((th) => isChatPath(th.cwd)),
+    // spaceReady 决定 isChatPath 的判定结果，必须作为依赖触发重算。
+    [filtered, isChatPath, spaceReady],
+  );
+  const taskThreads = useMemo(
+    () => filtered.filter((th) => !isChatPath(th.cwd)),
+    [filtered, isChatPath, spaceReady],
+  );
+
   // 按工作区 roots 分组；不属于任何工作区的归入“未分组”。空组不渲染。
   const groups = useMemo(() => {
     const result: Array<{ id: string | null; name: string; threads: ThreadSummary[] }> = [];
     const remaining: ThreadSummary[] = [];
-    for (const th of filtered) {
+    for (const th of taskThreads) {
       const owner = projects.find((p) => underRoots(th.cwd, p.roots));
       if (!owner) {
         remaining.push(th);
@@ -829,11 +856,13 @@ export function Sidebar() {
       visible.push({ id: null, name: t.sidebar.ungrouped, threads: remaining });
     }
     return visible;
-  }, [filtered, projects, t.sidebar.ungrouped]);
+  }, [taskThreads, projects, t.sidebar.ungrouped]);
 
-  const flatEmpty = initialized && filtered.length === 0;
+  const flatEmpty = initialized && taskThreads.length === 0;
   const projectEmpty = initialized && groups.every((g) => g.threads.length === 0);
-  const empty = listMode === "groups" ? flatEmpty : projectEmpty;
+  const chatEmpty = initialized && chatThreads.length === 0;
+  const empty =
+    listMode === "groups" ? flatEmpty : listMode === "chat" ? chatEmpty : projectEmpty;
 
   const terminalButton = (collapsedSize: boolean) => (
     <button
@@ -885,6 +914,17 @@ export function Sidebar() {
           {creating ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Plus className="h-[18px] w-[18px]" strokeWidth={1.8} />}
         </button>
         <button
+          title={t.sidebar.newConversation}
+          onClick={() => void newChat()}
+          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-text-muted hover:bg-hover hover:text-text"
+        >
+          {chatCreating ? (
+            <Loader2 className="h-[17px] w-[17px] animate-spin" />
+          ) : (
+            <MessagesSquare className="h-[17px] w-[17px]" strokeWidth={1.8} />
+          )}
+        </button>
+        <button
           title={t.sidebar.toggleSearch}
           onClick={() => {
             setCollapsed(false);
@@ -909,7 +949,7 @@ export function Sidebar() {
           <Blocks className="h-[17px] w-[17px]" strokeWidth={1.8} />
         </button>
         <div className="flex-1" />
-        {terminalButton(true)}
+        {listMode !== "chat" && terminalButton(true)}
         <button
           title={t.nav.settings}
           onClick={() => setView("settings")}
@@ -966,6 +1006,12 @@ export function Sidebar() {
           onClick={() => void newThread()}
         />
         <MenuRow
+          icon={chatCreating ? Loader2 : MessagesSquare}
+          spin={chatCreating}
+          label={t.sidebar.newConversation}
+          onClick={() => void newChat()}
+        />
+        <MenuRow
           icon={Search}
           label={t.sidebar.toggleSearch}
           shortcut="Ctrl+K"
@@ -1007,24 +1053,41 @@ export function Sidebar() {
             {t.sidebar.tabProjects}
           </button>
         </div>
-        <div className="flex-1" />
+        {/* 「对话」独立切换钮：不并入药丸分段，激活时高亮。 */}
         <button
-          title={t.sidebar.toggleArchived}
-          onClick={() => setShowArchived((v) => !v)}
+          title={t.sidebar.tabChat}
+          onClick={() => setListMode("chat")}
           className={cn(
-            "flex h-7 w-7 items-center justify-center rounded-lg",
-            showArchived ? "text-accent" : "text-text-faint hover:bg-hover hover:text-text",
+            "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
+            listMode === "chat"
+              ? "bg-surface-3 text-text"
+              : "text-text-faint hover:bg-hover hover:text-text",
           )}
         >
-          <Archive className="h-4 w-4" strokeWidth={1.8} />
+          <MessagesSquare className="h-4 w-4" strokeWidth={2} />
         </button>
-        <button
-          title={t.sidebar.newWorkspace}
-          onClick={() => setCreateOpen(true)}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-faint hover:bg-hover hover:text-text"
-        >
-          <FolderPlus className="h-4 w-4" strokeWidth={1.8} />
-        </button>
+        <div className="flex-1" />
+        {listMode !== "chat" && (
+          <>
+            <button
+              title={t.sidebar.toggleArchived}
+              onClick={() => setShowArchived((v) => !v)}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-lg",
+                showArchived ? "text-accent" : "text-text-faint hover:bg-hover hover:text-text",
+              )}
+            >
+              <Archive className="h-4 w-4" strokeWidth={1.8} />
+            </button>
+            <button
+              title={t.sidebar.newWorkspace}
+              onClick={() => setCreateOpen(true)}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-text-faint hover:bg-hover hover:text-text"
+            >
+              <FolderPlus className="h-4 w-4" strokeWidth={1.8} />
+            </button>
+          </>
+        )}
       </div>
 
       {/* 内联搜索框 */}
@@ -1071,13 +1134,27 @@ export function Sidebar() {
       ) : empty ? (
         <div className="px-3">
           <EmptyState
-            icon={<MessageSquarePlus className="h-5 w-5" strokeWidth={1.6} />}
+            icon={
+              listMode === "chat" ? (
+                <MessagesSquare className="h-5 w-5" strokeWidth={1.6} />
+              ) : (
+                <MessageSquarePlus className="h-5 w-5" strokeWidth={1.6} />
+              )
+            }
             title={
               query
                 ? `没有找到与“${truncate(query, 20)}”相关的会话`
-                : t.threads.empty
+                : listMode === "chat"
+                  ? t.sidebar.chatEmpty
+                  : t.threads.empty
             }
-            hint={query ? undefined : t.threads.emptyHint}
+            hint={
+              query
+                ? undefined
+                : listMode === "chat"
+                  ? t.sidebar.chatEmptyHint
+                  : t.threads.emptyHint
+            }
           />
         </div>
       ) : (
@@ -1090,9 +1167,9 @@ export function Sidebar() {
             }
           }}
         >
-          {listMode === "groups" ? (
+          {listMode !== "projects" ? (
             <div className="flex flex-col gap-px px-2 pb-2">
-              {filtered.map((th) => (
+              {(listMode === "chat" ? chatThreads : taskThreads).map((th) => (
                 <ThreadRow key={th.id} thread={th} active={activeThreadId === th.id} />
               ))}
               {loadingMore && (
@@ -1146,10 +1223,10 @@ export function Sidebar() {
         </div>
       )}
 
-      {/* 底部：账号 / 终端 / 设置 */}
+      {/* 底部：账号 / 终端 / 设置（纯对话分段隐藏终端入口） */}
       <div className="flex h-14 shrink-0 items-center gap-1 border-t border-border px-2.5">
         <AccountButton />
-        {terminalButton(false)}
+        {listMode !== "chat" && terminalButton(false)}
         <button
           title={t.nav.settings}
           onClick={() => setView("settings")}
