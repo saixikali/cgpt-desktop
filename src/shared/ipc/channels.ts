@@ -6,6 +6,7 @@ export const CHANNELS = {
   app: {
     version: "app:version",
     windowControl: "app:window-control",
+    windowState: "app:window-state",
     pickDirectory: "app:pick-directory",
     pickFile: "app:pick-file",
     showItem: "app:show-item",
@@ -95,6 +96,8 @@ export const EVENTS = {
   backendStatus: "backend:status-changed",
   approvalChanged: "approval:changed",
   codexNotification: "codex:notification",
+  /** 窗口最大化/还原状态变化，载荷 { maximized: boolean }。 */
+  appWindowState: "app:window-state-changed",
   processOutputDelta: "process:output-delta",
   processExited: "process:exited",
   cliUpdateOutput: "cli-update:output",

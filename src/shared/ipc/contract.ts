@@ -23,6 +23,7 @@ const threadId = z
 
 export const INPUTS = {
   [CHANNELS.app.version]: voidInput,
+  [CHANNELS.app.windowState]: voidInput,
   [CHANNELS.app.windowControl]: z
     .object({ action: z.enum(["minimize", "toggleMaximize", "close"]) })
     .strict(),

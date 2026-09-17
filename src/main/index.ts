@@ -84,6 +84,20 @@ function showWindow(): void {
   win.focus();
 }
 
+/** 最大化/还原时通知渲染层切换标题栏按钮图标（单方框 ⇄ 双叠方框）。 */
+function bindWindowStateEvents(win: BrowserWindow): void {
+  const emit = (maximized: boolean) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send("cgpt:event", {
+        event: EVENTS.appWindowState,
+        payload: { maximized },
+      });
+    }
+  };
+  win.on("maximize", () => emit(true));
+  win.on("unmaximize", () => emit(false));
+}
+
 /**
  * 仅在 CGPT_SELFTEST=1 时运行的端内安全自检（TR-4.1/4.2/4.4 取证用），
  * 正常启动路径不会执行。结果经 stdout 打印后退出。
@@ -219,6 +233,7 @@ app
 
     mainWindow = await createMainWindow(windowState.get());
     windowState.track(mainWindow);
+    bindWindowStateEvents(mainWindow);
     mainWindow.on("close", (event) => {
       // 关闭到托盘：拦截并隐藏；真正退出（托盘菜单/before-quit）时放行。
       if (!isQuitting && settings.get().closeToTray) {
@@ -253,6 +268,7 @@ app
         void createMainWindow(windowState?.get()).then((win) => {
           mainWindow = win;
           windowState?.track(win);
+          bindWindowStateEvents(win);
         });
       } else {
         showWindow();

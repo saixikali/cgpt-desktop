@@ -149,6 +149,11 @@ const HANDLERS: Record<string, AnyHandler> = {
     else win.maximize();
     return null;
   },
+  // 渲染层标题栏据此初始化最大化按钮图标（事件推送见 index.ts 的窗口监听）。
+  [C.app.windowState]: async (ctx) => {
+    const win = ctx.getWindow();
+    return { maximized: win ? win.isMaximized() : false };
+  },
   [C.app.pickDirectory]: async (_ctx, input) => {
     const r = await dialog.showOpenDialog({
       title: "选择工作目录",

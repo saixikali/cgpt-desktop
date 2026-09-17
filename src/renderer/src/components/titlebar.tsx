@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { Minus, Square, X } from "lucide-react";
-import { bridge } from "../lib/ipc.ts";
+import { bridge, call, onEvent } from "../lib/ipc.ts";
+import { EVENTS } from "../../../shared/ipc/channels.ts";
 import { t } from "../i18n/zh.ts";
 import { useBackendStore } from "../store/backend.ts";
 import { cn } from "../lib/cn.ts";
@@ -14,10 +16,49 @@ const STATE_DOT: Record<string, string> = {
   fatal: "bg-danger",
 };
 
+/** Windows 标准「还原」双叠方框：后方块仅画上/右及被前方块遮挡后露出的边段（无填充，hover 不穿帮）。 */
+function RestoreIcon() {
+  return (
+    <svg
+      className="h-[13px] w-[13px]"
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1}
+      strokeLinecap="square"
+      strokeLinejoin="miter"
+      aria-hidden
+    >
+      <path d="M3 1h8v8H9 M3 1v2" />
+      <rect x="1" y="3" width="8" height="8" />
+    </svg>
+  );
+}
+
 export function TitleBar() {
   const status = useBackendStore((s) => s.status);
   const state = status?.state ?? "idle";
   const stateLabel = t.status[state as keyof typeof t.status] ?? state;
+  const [maximized, setMaximized] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void call<{ maximized: boolean }>(() => bridge().app.windowState({}))
+      .then((s) => {
+        if (alive && s) setMaximized(s.maximized);
+      })
+      .catch(() => {
+        /* 取不到时维持单方框 */
+      });
+    const off = onEvent(EVENTS.appWindowState, (payload) => {
+      const m = (payload as { maximized?: boolean } | null)?.maximized;
+      if (typeof m === "boolean") setMaximized(m);
+    });
+    return () => {
+      alive = false;
+      off();
+    };
+  }, []);
 
   return (
     <header className="titlebar relative flex h-9 shrink-0 items-center border-b border-border bg-panel px-3">
@@ -52,9 +93,10 @@ export function TitleBar() {
         <button
           className="flex h-7 w-9 items-center justify-center text-text-muted hover:bg-hover hover:text-text"
           onClick={() => void bridge().app.windowControl({ action: "toggleMaximize" })}
-          aria-label="最大化/还原"
+          aria-label={maximized ? "还原" : "最大化"}
+          title={maximized ? "还原" : "最大化"}
         >
-          <Square className="h-3 w-3" />
+          {maximized ? <RestoreIcon /> : <Square className="h-3 w-3" />}
         </button>
         <button
           className="flex h-7 w-9 items-center justify-center text-text-muted hover:bg-danger hover:text-on-accent"
