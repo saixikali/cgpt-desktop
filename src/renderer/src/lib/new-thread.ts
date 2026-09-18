@@ -15,7 +15,10 @@ export class PickedCanceled extends Error {
   }
 }
 
-export async function createThread(cwd?: string): Promise<string> {
+export async function createThread(
+  cwd?: string,
+  backend?: "codex" | "claude",
+): Promise<string> {
   const projects = useProjectsStore.getState();
   const threads = useThreadsStore.getState();
   const view = useThreadViewStore.getState();
@@ -30,7 +33,7 @@ export async function createThread(cwd?: string): Promise<string> {
 
   if (!resolved) throw new PickedCanceled();
 
-  const id = await threads.start(resolved, activeProject?.id ?? null);
+  const id = await threads.start(resolved, activeProject?.id ?? null, backend);
   await view.open(id);
   return id;
 }

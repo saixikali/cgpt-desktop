@@ -201,6 +201,8 @@ export function Composer() {
   const isChatPath = useChatModeStore((s) => s.isChatPath);
   const spaceReady = useChatModeStore((s) => s.spaceReady);
   const initSpace = useChatModeStore((s) => s.initSpace);
+  // 欢迎页直接发送消息时，新建任务会话使用的后端（与侧栏共享）。
+  const taskBackend = useChatModeStore((s) => s.taskBackend);
   const isChat = useMemo(() => {
     if (!threadId) return listMode === "chat";
     // 会话详情未加载时按分段兜底，避免沙箱控件短暂闪现。
@@ -260,7 +262,7 @@ export function Composer() {
             cwd = await call<string | null>(() => bridge().app.pickDirectory(undefined));
             if (!cwd) return;
           }
-          tid = await startThread(cwd, activeProject?.id ?? null);
+          tid = await startThread(cwd, activeProject?.id ?? null, taskBackend);
         }
         // 建会话前选择的当轮覆盖挂到新会话上。
         useTurnOverridesStore.getState().adoptPending(tid);

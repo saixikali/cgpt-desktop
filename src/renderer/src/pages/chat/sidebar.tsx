@@ -11,6 +11,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Blocks,
+  ChevronDown,
   ChevronRight,
   Ellipsis,
   Folder,
@@ -664,6 +665,9 @@ export function Sidebar() {
   const spaceReady = useChatModeStore((s) => s.spaceReady);
   const isChatPath = useChatModeStore((s) => s.isChatPath);
   const initSpace = useChatModeStore((s) => s.initSpace);
+  // 新建任务后端选择（codex/claude），与 Composer 欢迎页共享，持久化到 localStorage。
+  const taskBackend = useChatModeStore((s) => s.taskBackend);
+  const setTaskBackend = useChatModeStore((s) => s.setTaskBackend);
 
   const projects = useProjectsStore((s) => s.items);
   const projectsLoading = useProjectsStore((s) => s.loading);
@@ -695,6 +699,9 @@ export function Sidebar() {
   const [creating, setCreating] = useState(false);
   const [chatCreating, setChatCreating] = useState(false);
   const pickLock = useRef(false);
+  // 新建任务后端下拉菜单状态（backend 选择本身存全局 store）。
+  const [backendMenuOpen, setBackendMenuOpen] = useState(false);
+  const backendMenuRef = useRef<HTMLDivElement | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
@@ -735,6 +742,18 @@ export function Sidebar() {
       /* ignore */
     }
   }, [collapsedGroups]);
+
+  // 后端下拉菜单：点击外部关闭。
+  useEffect(() => {
+    if (!backendMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (backendMenuRef.current && !backendMenuRef.current.contains(e.target as Node)) {
+        setBackendMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [backendMenuOpen]);
 
   const toggleGroup = (key: string) =>
     setCollapsedGroups((prev) => {
@@ -778,7 +797,7 @@ export function Sidebar() {
     }
   };
 
-  const newThread = async () => {
+  const newThread = async (backend: "codex" | "claude" = taskBackend) => {
     if (creating || pickLock.current) return;
     const activeProject = projects.find((p) => p.id === activeProjectId) ?? null;
     try {
@@ -790,7 +809,7 @@ export function Sidebar() {
         if (!cwd) return;
       }
       setCreating(true);
-      const id = await startThread(cwd, activeProject?.id ?? null);
+      const id = await startThread(cwd, activeProject?.id ?? null, backend);
       await openThread(id);
     } catch (err) {
       toastError(t.toast.actionFailed, err instanceof Error ? err.message : String(err));
@@ -906,13 +925,50 @@ export function Sidebar() {
         >
           <BrandMark size={22} />
         </button>
-        <button
-          title={t.sidebar.newTask}
-          onClick={() => void newThread()}
-          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-text-muted hover:bg-hover hover:text-text"
-        >
-          {creating ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Plus className="h-[18px] w-[18px]" strokeWidth={1.8} />}
-        </button>
+        <div className="relative" ref={collapsed ? backendMenuRef : undefined}>
+          <button
+            title={t.sidebar.newTask}
+            onClick={() => (backendMenuOpen ? setBackendMenuOpen(false) : setBackendMenuOpen(true))}
+            className={cn(
+              "relative flex h-9 w-9 items-center justify-center rounded-lg text-text-muted hover:bg-hover hover:text-text",
+              backendMenuOpen && "bg-hover text-text",
+            )}
+          >
+            {creating ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Plus className="h-[18px] w-[18px]" strokeWidth={1.8} />}
+          </button>
+          {collapsed && backendMenuOpen && (
+            <div className="absolute left-full top-0 z-30 ml-1 w-36 overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
+              <button
+                onClick={() => {
+                  setTaskBackend("codex");
+                  setBackendMenuOpen(false);
+                  void newThread("codex");
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors hover:bg-hover",
+                  taskBackend === "codex" ? "text-text" : "text-text-muted",
+                )}
+              >
+                <span className="h-2 w-2 shrink-0 rounded-full bg-accent" />
+                <span className="flex-1">Codex</span>
+              </button>
+              <button
+                onClick={() => {
+                  setTaskBackend("claude");
+                  setBackendMenuOpen(false);
+                  void newThread("claude");
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors hover:bg-hover",
+                  taskBackend === "claude" ? "text-text" : "text-text-muted",
+                )}
+              >
+                <span className="h-2 w-2 shrink-0 rounded-full bg-accent" />
+                <span className="flex-1">Claude Code</span>
+              </button>
+            </div>
+          )}
+        </div>
         <button
           title={t.sidebar.newConversation}
           onClick={() => void newChat()}
@@ -998,13 +1054,68 @@ export function Sidebar() {
 
       {/* 主菜单 */}
       <nav className="flex shrink-0 flex-col gap-0.5 px-3 pb-1">
-        <MenuRow
-          icon={creating ? Loader2 : MessageSquarePlus}
-          spin={creating}
-          label={t.sidebar.newTask}
-          shortcut="Ctrl+N"
-          onClick={() => void newThread()}
-        />
+        {/* 新建任务：主按钮用当前选中的后端，右侧下拉切换 Codex / Claude Code */}
+        <div className="relative" ref={backendMenuRef}>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => void newThread()}
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[14px] text-text-muted transition-colors hover:bg-hover hover:text-text"
+            >
+              {creating ? (
+                <Loader2 className="h-[18px] w-[18px] shrink-0 animate-spin" strokeWidth={1.8} />
+              ) : (
+                <MessageSquarePlus className="h-[18px] w-[18px] shrink-0" strokeWidth={1.8} />
+              )}
+              <span className="min-w-0 flex-1 truncate">{t.sidebar.newTask}</span>
+              <span className="shrink-0 rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] font-medium uppercase text-text-muted dark:bg-neutral-700">
+                {taskBackend === "claude" ? "Claude" : "Codex"}
+              </span>
+              <span className="shrink-0 text-[11px] text-text-faint">Ctrl+N</span>
+            </button>
+            <button
+              onClick={() => setBackendMenuOpen((v) => !v)}
+              title={t.sidebar.switchBackend}
+              className={cn(
+                "flex h-9 w-7 shrink-0 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-hover hover:text-text",
+                backendMenuOpen && "bg-hover text-text",
+              )}
+            >
+              <ChevronDown className="h-4 w-4" strokeWidth={1.8} />
+            </button>
+          </div>
+          {backendMenuOpen && (
+            <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
+              <button
+                onClick={() => {
+                  setTaskBackend("codex");
+                  setBackendMenuOpen(false);
+                  void newThread("codex");
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors hover:bg-hover",
+                  taskBackend === "codex" ? "text-text" : "text-text-muted",
+                )}
+              >
+                <span className="h-2 w-2 shrink-0 rounded-full bg-accent" />
+                <span className="flex-1">Codex</span>
+              </button>
+              <button
+                onClick={() => {
+                  setTaskBackend("claude");
+                  setBackendMenuOpen(false);
+                  void newThread("claude");
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors hover:bg-hover",
+                  taskBackend === "claude" ? "text-text" : "text-text-muted",
+                )}
+              >
+                <span className="h-2 w-2 shrink-0 rounded-full bg-accent" />
+                <span className="flex-1">Claude Code</span>
+              </button>
+            </div>
+          )}
+        </div>
         <MenuRow
           icon={chatCreating ? Loader2 : MessagesSquare}
           spin={chatCreating}

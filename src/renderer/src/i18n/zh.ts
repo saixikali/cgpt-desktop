@@ -105,6 +105,7 @@ export const t = {
     newChat: "新建任务",
     newTask: "新建任务",
     newConversation: "新建对话",
+    switchBackend: "切换后端",
     automation: "自动化",
     marketplace: "插件市场",
     tabGroups: "分组",

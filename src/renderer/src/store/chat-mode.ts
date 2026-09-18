@@ -9,8 +9,10 @@ import { create } from "zustand";
 import { bridge, call } from "../lib/ipc.ts";
 
 export type ListMode = "groups" | "projects" | "chat";
+export type TaskBackend = "codex" | "claude";
 
 const MODE_KEY = "cgpt.sidebar.listmode";
+const BACKEND_KEY = "cgpt.task.backend";
 
 /** Windows 路径归一化：斜杆统一、去尾部反斜杠、小写比较（与主进程 normProjectRoot 一致）。 */
 function norm(p: string): string {
@@ -27,11 +29,22 @@ function readMode(): ListMode {
   return "groups";
 }
 
+function readBackend(): TaskBackend {
+  try {
+    return localStorage.getItem(BACKEND_KEY) === "claude" ? "claude" : "codex";
+  } catch {
+    return "codex";
+  }
+}
+
 interface ChatModeState {
   spaceDir: string | null;
   spaceReady: boolean;
   listMode: ListMode;
+  /** 新建任务会话使用的后端（codex / claude），侧栏与欢迎页共用。 */
+  taskBackend: TaskBackend;
   setListMode: (m: ListMode) => void;
+  setTaskBackend: (b: TaskBackend) => void;
   /** 拉取托管目录（主进程负责 mkdir）；幂等，并发调用共用同一个在途请求。 */
   initSpace: () => Promise<void>;
   /** cwd 是否为纯对话托管目录。spaceDir 未就绪时一律 false（列表会短暂归入任务侧，就绪后自动纠正）。 */
@@ -44,11 +57,21 @@ export const useChatModeStore = create<ChatModeState>((set, get) => ({
   spaceDir: null,
   spaceReady: false,
   listMode: readMode(),
+  taskBackend: readBackend(),
 
   setListMode: (m) => {
     set({ listMode: m });
     try {
       localStorage.setItem(MODE_KEY, m);
+    } catch {
+      /* ignore */
+    }
+  },
+
+  setTaskBackend: (b) => {
+    set({ taskBackend: b });
+    try {
+      localStorage.setItem(BACKEND_KEY, b);
     } catch {
       /* ignore */
     }

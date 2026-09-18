@@ -19,8 +19,8 @@ interface ThreadsStore {
   refresh: () => Promise<void>;
   loadMore: () => Promise<void>;
   search: (q: string) => Promise<void>;
-  /** 新建会话：以 cwd 启动 thread，成功后插入列表并返回 id。 */
-  start: (cwd: string, projectId?: string | null) => Promise<string>;
+  /** 新建会话：以 cwd 启动 thread，成功后插入列表并返回 id。backend 可选 codex（默认）/ claude。 */
+  start: (cwd: string, projectId?: string | null, backend?: "codex" | "claude") => Promise<string>;
   /** 新建纯对话：托管中性目录 + 只读沙箱 + 免审批，成功后插入列表并返回 id。 */
   startChat: () => Promise<string>;
   rename: (threadId: string, name: string) => Promise<void>;
@@ -116,10 +116,11 @@ export const useThreadsStore = create<ThreadsStore>((set, get) => {
       await load("more", { cursor: nextCursor });
     },
 
-    start: async (cwd, projectId) => {
-      const res = await call<Record<string, unknown>>(() =>
-        bridge().threads.start(projectId ? { cwd, projectId } : { cwd }),
-      );
+    start: async (cwd, projectId, backend) => {
+      const payload: { cwd: string; projectId?: string; backend?: "codex" | "claude" } = { cwd };
+      if (projectId) payload.projectId = projectId;
+      if (backend && backend !== "codex") payload.backend = backend;
+      const res = await call<Record<string, unknown>>(() => bridge().threads.start(payload));
       const raw = (res?.thread ?? res) as Record<string, unknown>;
       const thread = normalizeThread(raw);
       set((s) => ({
