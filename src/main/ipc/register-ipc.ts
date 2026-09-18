@@ -27,6 +27,7 @@ import {
 import { RpcError } from "../codex/rpc-client.ts";
 import { probeCodex } from "../codex/codex-resolver.ts";
 import type { CliToolsService } from "../codex/cli-tools.ts";
+import type { ConversationBackend } from "../backend/conversation-backend.ts";
 import { logger } from "../logging.ts";
 import type { TerminalService } from "../pty/terminal-service.ts";
 import { assertWithinRoots } from "./path-guard.ts";
@@ -38,6 +39,12 @@ interface HandlerContext {
   cliTools: CliToolsService;
   logsDir: string;
   getWindow: () => BrowserWindow | null;
+  /** 会话主轴双后端路由：threadId 命中 claude 会话走 claude，其余落回 codex。 */
+  conversation: {
+    codex: ConversationBackend;
+    claude: ConversationBackend;
+    forThread(threadId?: unknown): ConversationBackend;
+  };
 }
 
 type AnyHandler = (
@@ -135,6 +142,22 @@ function collectRoots(res: unknown): string[] {
     if (typeof t.cwd === "string") roots.push(t.cwd);
   }
   return roots;
+}
+
+/**
+ * 合并双后端的列表/搜索分页：claude 在前、codex 在后；
+ * 游标沿用 codex（claude 本地登记表一次性返回，无分页）。
+ */
+function mergePages(claude: unknown, codex: unknown): unknown {
+  const a = (claude ?? {}) as { data?: unknown; nextCursor?: unknown };
+  const b = (codex ?? {}) as { data?: unknown; nextCursor?: unknown };
+  return {
+    data: [
+      ...(Array.isArray(a.data) ? a.data : []),
+      ...(Array.isArray(b.data) ? b.data : []),
+    ],
+    nextCursor: b.nextCursor ?? null,
+  };
 }
 
 const HANDLERS: Record<string, AnyHandler> = {
@@ -275,10 +298,26 @@ const HANDLERS: Record<string, AnyHandler> = {
   [C.projects.move]: (ctx, i) => ctx.backend.api().moveProject(i),
 
   // ---------- threads ----------
-  [C.threads.list]: (ctx, i) => ctx.backend.api().listThreads(i ?? {}),
-  [C.threads.read]: (ctx, i) => ctx.backend.api().readThread(i),
+  // 列表/搜索为双后端合并结果（claude 会话在前）；read/resume 等按 threadId 路由。
+  [C.threads.list]: async (ctx, i) => {
+    const [claude, codex] = await Promise.all([
+      ctx.conversation.claude.listThreads(i ?? {}).catch((err) => {
+        logger.warn("claude 会话列表读取失败，按空列表处理", {
+          err: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      }),
+      ctx.conversation.codex.listThreads(i ?? {}),
+    ]);
+    return mergePages(claude, codex);
+  },
+  [C.threads.read]: (ctx, i) => ctx.conversation.forThread(i?.threadId).readThread(i),
   [C.threads.start]: async (ctx, i) => {
-    const res = await ctx.backend.api().startThread(i);
+    // backend === "claude" 显式指派 Claude Code 会话；其余全部由 codex 承载。
+    const res =
+      i?.backend === "claude"
+        ? await ctx.conversation.claude.startThread(i)
+        : await ctx.backend.api().startThread(i);
     ctx.settings.addRoots(collectRoots(res));
     return res;
   },
@@ -293,7 +332,7 @@ const HANDLERS: Record<string, AnyHandler> = {
     return res;
   },
   [C.threads.resume]: async (ctx, i) => {
-    const res = await ctx.backend.api().resumeThread(i);
+    const res = await ctx.conversation.forThread(i?.threadId).resumeThread(i);
     // 纯对话会话的托管目录不出现在向导最近目录里。
     const roots = collectRoots(res).filter(
       (r) => normProjectRoot(r) !== normProjectRoot(chatSpaceDir()),
@@ -301,33 +340,50 @@ const HANDLERS: Record<string, AnyHandler> = {
     ctx.settings.addRoots(roots);
     return res;
   },
+  // fork/updateSettings 为 codex 独有能力（claude v1 不支持，UI 不向 claude 会话暴露）。
   [C.threads.fork]: (ctx, i) => ctx.backend.api().forkThread(i),
-  [C.threads.archive]: (ctx, i) => ctx.backend.api().archiveThread(i),
-  [C.threads.unarchive]: (ctx, i) => ctx.backend.api().unarchiveThread(i),
-  [C.threads.remove]: (ctx, i) => ctx.backend.api().deleteThread(i),
-  [C.threads.turns]: (ctx, i) => ctx.backend.api().listTurns(i),
-  [C.threads.search]: (ctx, i) => ctx.backend.api().searchThreads(i),
-  [C.threads.setName]: (ctx, i) => ctx.backend.api().setThreadName(i),
+  [C.threads.archive]: (ctx, i) => ctx.conversation.forThread(i?.threadId).archiveThread(i),
+  [C.threads.unarchive]: (ctx, i) => ctx.conversation.forThread(i?.threadId).unarchiveThread(i),
+  [C.threads.remove]: (ctx, i) => ctx.conversation.forThread(i?.threadId).deleteThread(i),
+  [C.threads.turns]: (ctx, i) => ctx.conversation.forThread(i?.threadId).listTurns(i),
+  [C.threads.search]: async (ctx, i) => {
+    const [claude, codex] = await Promise.all([
+      ctx.conversation.claude.searchThreads(i ?? {}).catch(() => null),
+      ctx.conversation.codex.searchThreads(i ?? {}),
+    ]);
+    return mergePages(claude, codex);
+  },
+  [C.threads.setName]: (ctx, i) => ctx.conversation.forThread(i?.threadId).setThreadName(i),
   [C.threads.updateSettings]: (ctx, i) => ctx.backend.api().updateThreadSettings(i),
 
   // ---------- turn ----------
-  [C.turn.start]: (ctx, i) => ctx.backend.api().startTurn(i),
-  [C.turn.steer]: (ctx, i) => ctx.backend.api().steerTurn(i),
-  [C.turn.interrupt]: (ctx, i) => ctx.backend.api().interruptTurn(i),
+  [C.turn.start]: (ctx, i) => ctx.conversation.forThread(i?.threadId).startTurn(i),
+  [C.turn.steer]: (ctx, i) => ctx.conversation.forThread(i?.threadId).steerTurn(i),
+  [C.turn.interrupt]: (ctx, i) => ctx.conversation.forThread(i?.threadId).interruptTurn(i),
 
   // ---------- approvals ----------
-  [C.approvals.list]: (ctx) => ctx.backend.apiOrNull?.approvals.list() ?? [],
-  // 决议必须真正送达 codex：后端不可用时抛错，渲染层保留卡片并提示重试，
-  // 绝不能静默回 null 让用户误以为已决议（codex 会永久挂起等待）。
+  [C.approvals.list]: (ctx) => {
+    const codexList = ctx.backend.apiOrNull?.approvals.list() ?? [];
+    return [...ctx.conversation.claude.approvals.list(), ...codexList];
+  },
+  // 决议必须真正送达对应后端：不可用时抛错，渲染层保留卡片并提示重试，
+  // 绝不能静默回 null 让用户误以为已决议（后端会永久挂起等待）。
   [C.approvals.resolveCommand]: async (ctx, i) => {
-    await Promise.resolve(ctx.backend.api().approvals.resolveCommand(i.localId, i.decision));
+    const target = ctx.conversation.claude.ownsApproval(i.localId)
+      ? ctx.conversation.claude
+      : ctx.conversation.codex;
+    await Promise.resolve(target.approvals.resolveCommand(i.localId, i.decision));
     return null;
   },
   [C.approvals.resolveFileChange]: async (ctx, i) => {
-    await Promise.resolve(ctx.backend.api().approvals.resolveFileChange(i.localId, i.decision));
+    const target = ctx.conversation.claude.ownsApproval(i.localId)
+      ? ctx.conversation.claude
+      : ctx.conversation.codex;
+    await Promise.resolve(target.approvals.resolveFileChange(i.localId, i.decision));
     return null;
   },
   [C.approvals.resolveElicitation]: async (ctx, i) => {
+    // elicitation/userInput 仅 codex 有（claude 审批只有 command/fileChange 两类）。
     await Promise.resolve(
       ctx.backend.api().approvals.resolveElicitation(i.localId, i.action, i.content ?? null),
     );
@@ -338,9 +394,10 @@ const HANDLERS: Record<string, AnyHandler> = {
     return null;
   },
   [C.approvals.respondError]: async (ctx, i) => {
-    await Promise.resolve(
-      ctx.backend.api().approvals.respondError(i.localId, i.code, i.message, i.data),
-    );
+    const target = ctx.conversation.claude.ownsApproval(i.localId)
+      ? ctx.conversation.claude
+      : ctx.conversation.codex;
+    await Promise.resolve(target.approvals.respondError(i.localId, i.code, i.message, i.data));
     return null;
   },
 

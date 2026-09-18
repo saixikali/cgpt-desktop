@@ -3,7 +3,9 @@ import { existsSync, mkdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { AppSettings } from "./app-settings.ts";
+import { CodexBackend } from "./backend/codex-backend.ts";
 import { BackendService } from "./backend-service.ts";
+import { ClaudeBackend } from "./claude-backend/claude-backend.ts";
 import { CliToolsService } from "./codex/cli-tools.ts";
 import { logger } from "./logging.ts";
 import { registerIpc } from "./ipc/register-ipc.ts";
@@ -36,6 +38,7 @@ if (!gotLock) {
 
 let mainWindow: BrowserWindow | null = null;
 let backend: BackendService | null = null;
+let claudeBackend: ClaudeBackend | null = null;
 let tray: TrayService | null = null;
 let windowState: WindowStateStore | null = null;
 let isQuitting = false;
@@ -176,6 +179,7 @@ app.on("before-quit", (event) => {
   quitting = true;
   terminal.killAll();
   cliTools?.dispose();
+  void claudeBackend?.dispose();
   tray?.destroy();
   Promise.race([
     backend?.stop() ?? Promise.resolve(),
@@ -204,6 +208,14 @@ app
     backend.on("notification", (envelope) => broadcast(EVENTS.codexNotification, envelope));
     backend.on("approval", (approval) => broadcast(EVENTS.approvalChanged, approval));
 
+    // 双会话后端：claude 承载 Claude Code 会话，codex 承载其余全部（owns 恒真兜底）。
+    // codex 事件仍由上面的 BackendService 订阅广播，此处只接 claude 的，避免重复消费。
+    const codexConv = new CodexBackend(backend);
+    const claudeConv = new ClaudeBackend(app.getPath("userData"));
+    claudeBackend = claudeConv;
+    claudeConv.on("notification", (envelope) => broadcast(EVENTS.codexNotification, envelope));
+    claudeConv.on("approval", (approval) => broadcast(EVENTS.approvalChanged, approval));
+
     const logsDir = join(app.getPath("userData"), "logs");
     registerIpc(
       {
@@ -213,6 +225,12 @@ app
         cliTools,
         logsDir,
         getWindow: () => mainWindow,
+        conversation: {
+          codex: codexConv,
+          claude: claudeConv,
+          forThread: (threadId) =>
+            typeof threadId === "string" && claudeConv.owns(threadId) ? claudeConv : codexConv,
+        },
       },
       app.getVersion(),
     );
